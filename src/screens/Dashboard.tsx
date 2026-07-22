@@ -6,6 +6,7 @@ import { fmt, toLKR } from '../lib/money'
 import { friendlyDate, periodLabel } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
 import SmsImport from '../components/SmsImport'
+import SearchSheet from '../components/SearchSheet'
 
 export default function Dashboard() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [periodOffset, setPeriodOffset] = useState(0) // 0 = latest
   const [detail, setDetail] = useState<Txn | null>(null)
   const [smsOpen, setSmsOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const period = periods.length ? periods[Math.max(0, periods.length - 1 - periodOffset)] : undefined
 
@@ -65,6 +67,14 @@ export default function Dashboard() {
           <p className="text-sm text-slate-500 dark:text-slate-400">My Budget</p>
           <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
         </div>
+        <div className="flex gap-2">
+        <button
+          onClick={() => setSearchOpen(true)}
+          aria-label="Search transactions"
+          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-slate-800/60"
+        >
+          🔍
+        </button>
         <button
           onClick={() => setSmsOpen(true)}
           aria-label="Import from SMS"
@@ -77,6 +87,7 @@ export default function Dashboard() {
             </span>
           )}
         </button>
+        </div>
       </header>
 
       {/* Summary card */}
@@ -233,6 +244,7 @@ export default function Dashboard() {
 
       {detail && <TxnDetail txn={detail} onClose={() => setDetail(null)} />}
       {smsOpen && <SmsImport onClose={() => setSmsOpen(false)} />}
+      {searchOpen && <SearchSheet onClose={() => setSearchOpen(false)} />}
     </div>
   )
 }

@@ -85,7 +85,7 @@ export default function SettingsScreen() {
             </p>
             <ol className="mt-1.5 list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
               <li>
-                In your Google account: <b>Security → 2-Step Verification → App passwords</b> → create one for “My Budget”
+                In your Google account: <b>Security → 2-Step Verification → App passwords</b> → create one for “HasiKasi”
               </li>
               <li>
                 In the GitHub repo: <b>Settings → Secrets and variables → Actions</b> → add three secrets:{' '}
@@ -134,7 +134,7 @@ export default function SettingsScreen() {
       {message && <p className="mb-4 text-center text-sm font-medium">{message}</p>}
 
       <p className="pb-4 text-center text-xs text-slate-400">
-        My Budget · local-first · your data never leaves this device
+        HasiKasi · local-first · your data never leaves this device
       </p>
     </div>
   )

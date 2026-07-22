@@ -14,8 +14,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'My Budget',
-        short_name: 'Budget',
+        name: 'HasiKasi',
+        short_name: 'HasiKasi',
         description: 'Personal budgeting app',
         theme_color: '#0b1121',
         background_color: '#0b1121',

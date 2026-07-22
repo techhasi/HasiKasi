@@ -64,7 +64,7 @@ export default function Dashboard() {
     <div className="px-4 pt-6">
       <header className="mb-4 flex items-center justify-between">
         <div>
-          <p className="text-sm text-slate-500 dark:text-slate-400">My Budget</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">HasiKasi</p>
           <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
         </div>
         <div className="flex gap-2">

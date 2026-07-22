@@ -29,10 +29,10 @@ jobs:
         run: |
           if [ "${{ github.event.schedule }}" = "0 14 25 * *" ]; then
             echo "subject=💼 Salary week — ready to start a new budget month?" >> "$GITHUB_OUTPUT"
-            echo "line=Your salary usually lands between the 25th and 31st. When it arrives, log it in My Budget (category: Salary) to close this budget month and start the next one." >> "$GITHUB_OUTPUT"
+            echo "line=Your salary usually lands between the 25th and 31st. When it arrives, log it in HasiKasi (category: Salary) to close this budget month and start the next one." >> "$GITHUB_OUTPUT"
           else
             echo "subject=📝 Log today's spending" >> "$GITHUB_OUTPUT"
-            echo "line=Take a minute to add today's expenses to My Budget — future you will thank you." >> "$GITHUB_OUTPUT"
+            echo "line=Take a minute to add today's expenses to HasiKasi — future you will thank you." >> "$GITHUB_OUTPUT"
           fi
 
       - name: Send email
@@ -44,11 +44,11 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           to: ${{ secrets.MAIL_TO }}
-          from: My Budget <${{ secrets.MAIL_USERNAME }}>
+          from: HasiKasi <${{ secrets.MAIL_USERNAME }}>
           subject: ${{ steps.msg.outputs.subject }}
           html_body: |
             <div style="font-family:-apple-system,sans-serif;max-width:420px;margin:0 auto;padding:24px;">
-              <h2 style="color:#6366f1;">My Budget</h2>
+              <h2 style="color:#6366f1;">HasiKasi</h2>
               <p style="font-size:15px;color:#334155;line-height:1.6;">${{ steps.msg.outputs.line }}</p>
               <p style="font-size:13px;color:#94a3b8;">Open the app from your home-screen icon — that's where your data lives.</p>
             </div>

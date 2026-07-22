@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
-import { db, DEFAULT_SETTINGS, type Category, type TxnType } from '../db/db'
+import { db, DEFAULT_SETTINGS, type Category, type CategoryKind } from '../db/db'
 import { txnsInPeriod } from '../lib/periods'
 import { fmt, toLKR } from '../lib/money'
 import { periodLabel } from '../lib/dates'
@@ -13,7 +13,7 @@ export default function Stats() {
   const txns = useLiveQuery(() => db.txns.toArray(), [], [])
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
 
-  const [kind, setKind] = useState<TxnType>('expense')
+  const [kind, setKind] = useState<CategoryKind>('expense')
   const [periodOffset, setPeriodOffset] = useState(0)
   const [budgetTarget, setBudgetTarget] = useState<{ cat: Category; spent: number } | null>(null)
 

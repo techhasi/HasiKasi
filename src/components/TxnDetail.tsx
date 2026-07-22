@@ -4,13 +4,21 @@ import { db, type Txn } from '../db/db'
 import { fmt } from '../lib/money'
 import { friendlyDate } from '../lib/dates'
 import Sheet from './Sheet'
+import AddSheet from './AddSheet'
 
 export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => void }) {
   const category = useLiveQuery(() => db.categories.get(txn.categoryId), [txn.categoryId])
   const account = useLiveQuery(() => db.accounts.get(txn.accountId), [txn.accountId])
+  const toAccount = useLiveQuery(
+    () => (txn.toAccountId ? db.accounts.get(txn.toAccountId) : undefined),
+    [txn.toAccountId]
+  )
   const receipt = useLiveQuery(() => db.receipts.get(txn.id), [txn.id])
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [editing, setEditing] = useState(false)
+
+  const isTransfer = txn.type === 'transfer'
 
   useEffect(() => {
     if (!receipt) return
@@ -32,20 +40,31 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
       <div className="mb-4 flex flex-col items-center">
         <span
           className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl text-2xl"
-          style={{ backgroundColor: `${category?.color ?? '#64748b'}22` }}
+          style={{ backgroundColor: isTransfer ? '#0ea5e922' : `${category?.color ?? '#64748b'}22` }}
         >
-          {category?.emoji ?? '❓'}
+          {isTransfer ? '⇄' : (category?.emoji ?? '❓')}
         </span>
-        <p className="text-sm text-slate-500">{category?.name}</p>
-        <p className={`text-3xl font-bold tabular-nums ${txn.type === 'expense' ? 'text-rose-500' : 'text-emerald-500'}`}>
-          {txn.type === 'expense' ? '−' : '+'}
+        <p className="text-sm text-slate-500">{isTransfer ? 'Transfer' : category?.name}</p>
+        <p
+          className={`text-3xl font-bold tabular-nums ${
+            isTransfer ? 'text-sky-500' : txn.type === 'expense' ? 'text-rose-500' : 'text-emerald-500'
+          }`}
+        >
+          {isTransfer ? '' : txn.type === 'expense' ? '−' : '+'}
           {fmt(txn.amountMinor, txn.currency, { compactCents: true })}
         </p>
       </div>
 
       <div className="mb-4 overflow-hidden rounded-2xl bg-slate-50 dark:bg-slate-800/60">
         <Row label="Date" value={friendlyDate(txn.date)} />
-        <Row label="Account" value={account?.name ?? '—'} />
+        {isTransfer ? (
+          <>
+            <Row label="From" value={account?.name ?? '—'} />
+            <Row label="To" value={toAccount?.name ?? '—'} />
+          </>
+        ) : (
+          <Row label="Account" value={account?.name ?? '—'} />
+        )}
         <Row label="Currency" value={txn.currency} />
         {txn.note && <Row label="Note" value={txn.note} />}
         {txn.startsPeriod && <Row label="Budget month" value="Started a new period 🗓️" />}
@@ -65,10 +84,23 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
           </button>
         </div>
       ) : (
-        <button onClick={() => setConfirming(true)} className="w-full rounded-2xl bg-rose-50 py-3 font-semibold text-rose-500 dark:bg-rose-500/10">
-          Delete transaction
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setEditing(true)}
+            className="flex-1 rounded-2xl bg-indigo-500 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30"
+          >
+            ✏️ Edit
+          </button>
+          <button
+            onClick={() => setConfirming(true)}
+            className="flex-1 rounded-2xl bg-rose-50 py-3 font-semibold text-rose-500 dark:bg-rose-500/10"
+          >
+            Delete
+          </button>
+        </div>
       )}
+
+      {editing && <AddSheet edit={txn} onSaved={onClose} onClose={() => setEditing(false)} />}
     </Sheet>
   )
 }

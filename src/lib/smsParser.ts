@@ -1,9 +1,9 @@
-import type { Currency, TxnType } from '../db/db'
+import type { CategoryKind, Currency } from '../db/db'
 import { todayISO } from './dates'
 
 export interface ParsedSms {
   raw: string
-  type: TxnType
+  type: CategoryKind
   /** null = no amount found (unparseable message) */
   amountMinor: number | null
   currency: Currency
@@ -53,10 +53,10 @@ function parseAmountAndCurrency(text: string): { amountMinor: number; currency: 
   return null
 }
 
-function parseType(text: string): TxnType {
+function parseType(text: string): CategoryKind {
   // "credit card" is a payment instrument, not an income signal
   const lower = text.toLowerCase().replace(/credit\s*card/g, 'ccard')
-  let best: { type: TxnType; idx: number } | null = null
+  let best: { type: CategoryKind; idx: number } | null = null
   for (const w of EXPENSE_WORDS) {
     const i = lower.indexOf(w)
     if (i !== -1 && (!best || i < best.idx)) best = { type: 'expense', idx: i }
@@ -74,8 +74,9 @@ function looksLikeAccountRef(s: string): boolean {
 }
 
 function parseMerchant(text: string): string {
-  // "at KEELLS SUPER on ...", "to JOHN via ...", "from ACME for ..." — skip account refs
-  for (const m of text.matchAll(/\b(?:at|to|from)\s+([^\n.,;]{2,40}?)(?=\s+(?:on|for|via|ref|with|using|lkr|rs|usd)\b|[.,;\n]|$)/gi)) {
+  // "at KEELLS SUPER on ...", "to JOHN via ...", "from ACME for ..." — skip account refs.
+  // Capture stops before trailing balance snippets ("WATCH HOUSE Avl Bal LKR ...").
+  for (const m of text.matchAll(/\b(?:at|to|from)\s+([^\n.,;]{2,40}?)(?=\s+(?:on|for|via|ref|with|using|lkr|slr|rs|usd|avl|available|bal|balance|total|limit|outstanding)\b|[.,;\n]|$)/gi)) {
     const candidate = m[1].trim()
     if (!looksLikeAccountRef(candidate)) return candidate
   }

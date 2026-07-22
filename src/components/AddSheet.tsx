@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, uid, DEFAULT_SETTINGS, type Currency, type TxnType } from '../db/db'
+import { db, uid, DEFAULT_SETTINGS, type Currency, type Txn, type TxnType } from '../db/db'
 import { parseAmount, CURRENCY_SYMBOL } from '../lib/money'
 import { todayISO } from '../lib/dates'
 import { compressImage } from '../lib/image'
@@ -17,18 +17,52 @@ export interface AddInitial {
   note?: string
 }
 
-export default function AddSheet({ onClose, initial, onSaved }: { onClose: () => void; initial?: AddInitial; onSaved?: () => void }) {
+const TYPE_META: Record<TxnType, { label: string; active: string; button: string; saveLabel: string }> = {
+  expense: {
+    label: '↑ Expense',
+    active: 'bg-rose-500 text-white shadow-md shadow-rose-500/30',
+    button: 'bg-gradient-to-r from-rose-500 to-orange-500 shadow-rose-500/30',
+    saveLabel: 'Add Expense'
+  },
+  income: {
+    label: '↓ Income',
+    active: 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30',
+    button: 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/30',
+    saveLabel: 'Add Income'
+  },
+  transfer: {
+    label: '⇄ Transfer',
+    active: 'bg-sky-500 text-white shadow-md shadow-sky-500/30',
+    button: 'bg-gradient-to-r from-sky-500 to-indigo-500 shadow-sky-500/30',
+    saveLabel: 'Add Transfer'
+  }
+}
+
+export default function AddSheet({
+  onClose,
+  initial,
+  edit,
+  onSaved
+}: {
+  onClose: () => void
+  initial?: AddInitial
+  /** when set, the sheet edits this existing transaction instead of adding */
+  edit?: Txn
+  onSaved?: () => void
+}) {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
+  const existingReceipt = useLiveQuery(() => (edit ? db.receipts.get(edit.id) : undefined), [edit?.id])
 
-  const [type, setType] = useState<TxnType>(initial?.type ?? 'expense')
-  const [amount, setAmount] = useState(initial?.amount ?? '')
-  const [currency, setCurrency] = useState<Currency | null>(initial?.currency ?? null)
-  const [categoryId, setCategoryId] = useState<string | null>(null)
-  const [accountId, setAccountId] = useState<string | null>(null)
-  const [date, setDate] = useState(initial?.date ?? todayISO())
-  const [note, setNote] = useState(initial?.note ?? '')
+  const [type, setType] = useState<TxnType>(edit?.type ?? initial?.type ?? 'expense')
+  const [amount, setAmount] = useState(edit ? (edit.amountMinor / 100).toFixed(2) : (initial?.amount ?? ''))
+  const [currency, setCurrency] = useState<Currency | null>(edit?.currency ?? initial?.currency ?? null)
+  const [categoryId, setCategoryId] = useState<string | null>(edit?.categoryId || null)
+  const [accountId, setAccountId] = useState<string | null>(edit?.accountId ?? null)
+  const [toAccountId, setToAccountId] = useState<string | null>(edit?.toAccountId ?? null)
+  const [date, setDate] = useState(edit?.date ?? initial?.date ?? todayISO())
+  const [note, setNote] = useState(edit?.note ?? initial?.note ?? '')
   const [receipt, setReceipt] = useState<File | null>(null)
   const [startsPeriod, setStartsPeriod] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -46,11 +80,13 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
   const cats = useMemo(() => categories.filter(c => c.kind === type), [categories, type])
   const selectedCat = cats.find(c => c.id === categoryId)
   const effectiveAccountId = accountId ?? accounts[0]?.id ?? null
-  const isSalary = type === 'income' && selectedCat?.name === 'Salary'
+  const effectiveToAccountId = toAccountId ?? accounts.find(a => a.id !== effectiveAccountId)?.id ?? null
+  // Only offer "start new period" for freshly added salary income
+  const isSalary = !edit && type === 'income' && selectedCat?.name === 'Salary'
 
   async function addCategory() {
     const name = newCatName.trim()
-    if (!name) return
+    if (!name || type === 'transfer') return
     const id = uid()
     await db.categories.add({ id, name, emoji: newCatEmoji || '✨', color: newCatColor, kind: type })
     setCategoryId(id)
@@ -61,30 +97,42 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
   async function save() {
     const amountMinor = parseAmount(amount)
     if (!amountMinor) return setError('Enter a valid amount')
-    if (!categoryId || !cats.some(c => c.id === categoryId)) return setError('Pick a category')
     if (!effectiveAccountId) return setError('Pick an account')
+    if (type === 'transfer') {
+      if (accounts.length < 2) return setError('Add a second account first (Accounts tab)')
+      if (!effectiveToAccountId || effectiveToAccountId === effectiveAccountId) return setError('Pick two different accounts')
+    } else if (!categoryId || !cats.some(c => c.id === categoryId)) {
+      return setError('Pick a category')
+    }
     setError('')
     setSaving(true)
     try {
-      const willStartPeriod = type === 'income' && isSalary && startsPeriod
-      if (willStartPeriod) await startNewPeriod(date)
-
-      const id = uid()
-      await db.txns.add({
-        id,
+      const fields = {
         type,
         amountMinor,
         currency: activeCurrency,
-        categoryId,
+        categoryId: type === 'transfer' ? '' : categoryId!,
         accountId: effectiveAccountId,
+        toAccountId: type === 'transfer' ? effectiveToAccountId! : undefined,
         date,
-        note: note.trim(),
-        startsPeriod: willStartPeriod || undefined,
-        createdAt: Date.now()
-      })
+        note: note.trim()
+      }
+
+      let id: string
+      if (edit) {
+        // Edits never re-trigger period changes; the original startsPeriod flag is kept.
+        id = edit.id
+        await db.txns.update(id, fields)
+      } else {
+        const willStartPeriod = isSalary && startsPeriod
+        if (willStartPeriod) await startNewPeriod(date)
+        id = uid()
+        await db.txns.add({ id, ...fields, startsPeriod: willStartPeriod || undefined, createdAt: Date.now() })
+      }
+
       if (type === 'expense' && receipt) {
         const blob = await compressImage(receipt)
-        await db.receipts.add({ txnId: id, blob })
+        await db.receipts.put({ txnId: id, blob })
       }
       onSaved?.()
       onClose()
@@ -94,26 +142,26 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
     }
   }
 
+  const meta = TYPE_META[type]
+
   return (
-    <Sheet onClose={onClose} title={null}>
-      {/* Type toggle */}
-      <div className="mb-5 flex rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
-        {(['expense', 'income'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => { setType(t); setCategoryId(null); setReceipt(null) }}
-            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold capitalize transition-all ${
-              type === t
-                ? t === 'expense'
-                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30'
-                  : 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
-                : 'text-slate-500'
-            }`}
-          >
-            {t === 'expense' ? '↑ Expense' : '↓ Income'}
-          </button>
-        ))}
-      </div>
+    <Sheet onClose={onClose} title={edit ? 'Edit transaction' : null}>
+      {/* Type toggle (fixed when editing — changing type would orphan category/accounts) */}
+      {!edit && (
+        <div className="mb-5 flex rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
+          {(['expense', 'income', 'transfer'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => { setType(t); setCategoryId(null); setReceipt(null) }}
+              className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition-all ${
+                type === t ? TYPE_META[t].active : 'text-slate-500'
+              }`}
+            >
+              {TYPE_META[t].label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Amount */}
       <div className="mb-5 flex items-end justify-center gap-2">
@@ -124,7 +172,7 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
           {CURRENCY_SYMBOL[activeCurrency]} {activeCurrency}
         </button>
         <input
-          autoFocus
+          autoFocus={!edit}
           inputMode="decimal"
           placeholder="0.00"
           value={amount}
@@ -133,63 +181,95 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
         />
       </div>
 
-      {/* Category */}
-      <Label>Category</Label>
-      <div className="mb-4 grid grid-cols-4 gap-2">
-        {cats.map(c => (
-          <button
-            key={c.id}
-            onClick={() => setCategoryId(c.id)}
-            className={`flex flex-col items-center gap-1 rounded-2xl border-2 p-2 transition-all ${
-              categoryId === c.id
-                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
-                : 'border-transparent bg-slate-50 dark:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl text-base" style={{ backgroundColor: `${c.color}22` }}>
-              {c.emoji}
-            </span>
-            <span className="w-full truncate text-center text-[10px] font-medium">{c.name}</span>
-          </button>
-        ))}
-        <button
-          onClick={() => setNewCatOpen(o => !o)}
-          className="flex flex-col items-center gap-1 rounded-2xl border-2 border-dashed border-slate-300 p-2 text-slate-400 dark:border-slate-600"
-        >
-          <span className="flex h-8 w-8 items-center justify-center text-lg">＋</span>
-          <span className="text-[10px] font-medium">New</span>
-        </button>
-      </div>
-
-      {newCatOpen && (
-        <div className="mb-4 rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/60">
-          <div className="mb-2 flex gap-2">
-            <input
-              value={newCatEmoji}
-              onChange={e => setNewCatEmoji(e.target.value.slice(-2))}
-              className="w-12 rounded-xl border border-slate-200 bg-white p-2 text-center text-lg dark:border-slate-700 dark:bg-slate-900"
-            />
-            <input
-              placeholder="Category name"
-              value={newCatName}
-              onChange={e => setNewCatName(e.target.value)}
-              className="flex-1 rounded-xl border border-slate-200 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            />
+      {type === 'transfer' ? (
+        /* From / To accounts */
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <Label>From</Label>
+            <select
+              value={effectiveAccountId ?? ''}
+              onChange={e => setAccountId(e.target.value)}
+              className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+            >
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
           </div>
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {CATEGORY_COLORS.map(c => (
-              <button
-                key={c}
-                onClick={() => setNewCatColor(c)}
-                className={`h-6 w-6 rounded-full transition-transform ${newCatColor === c ? 'scale-125 ring-2 ring-slate-400 ring-offset-1' : ''}`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
+          <div>
+            <Label>To</Label>
+            <select
+              value={effectiveToAccountId ?? ''}
+              onChange={e => setToAccountId(e.target.value)}
+              className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+            >
+              {accounts.filter(a => a.id !== effectiveAccountId).map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
           </div>
-          <button onClick={addCategory} className="w-full rounded-xl bg-indigo-500 py-2 text-sm font-semibold text-white">
-            Add category
-          </button>
         </div>
+      ) : (
+        <>
+          {/* Category */}
+          <Label>Category</Label>
+          <div className="mb-4 grid grid-cols-4 gap-2">
+            {cats.map(c => (
+              <button
+                key={c.id}
+                onClick={() => setCategoryId(c.id)}
+                className={`flex flex-col items-center gap-1 rounded-2xl border-2 p-2 transition-all ${
+                  categoryId === c.id
+                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                    : 'border-transparent bg-slate-50 dark:bg-slate-800/60'
+                }`}
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl text-base" style={{ backgroundColor: `${c.color}22` }}>
+                  {c.emoji}
+                </span>
+                <span className="w-full truncate text-center text-[10px] font-medium">{c.name}</span>
+              </button>
+            ))}
+            <button
+              onClick={() => setNewCatOpen(o => !o)}
+              className="flex flex-col items-center gap-1 rounded-2xl border-2 border-dashed border-slate-300 p-2 text-slate-400 dark:border-slate-600"
+            >
+              <span className="flex h-8 w-8 items-center justify-center text-lg">＋</span>
+              <span className="text-[10px] font-medium">New</span>
+            </button>
+          </div>
+
+          {newCatOpen && (
+            <div className="mb-4 rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/60">
+              <div className="mb-2 flex gap-2">
+                <input
+                  value={newCatEmoji}
+                  onChange={e => setNewCatEmoji(e.target.value.slice(-2))}
+                  className="w-12 rounded-xl border border-slate-200 bg-white p-2 text-center text-lg dark:border-slate-700 dark:bg-slate-900"
+                />
+                <input
+                  placeholder="Category name"
+                  value={newCatName}
+                  onChange={e => setNewCatName(e.target.value)}
+                  className="flex-1 rounded-xl border border-slate-200 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                />
+              </div>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {CATEGORY_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setNewCatColor(c)}
+                    className={`h-6 w-6 rounded-full transition-transform ${newCatColor === c ? 'scale-125 ring-2 ring-slate-400 ring-offset-1' : ''}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <button onClick={addCategory} className="w-full rounded-xl bg-indigo-500 py-2 text-sm font-semibold text-white">
+                Add category
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Date + Account */}
@@ -204,18 +284,20 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
         </div>
-        <div>
-          <Label>Account</Label>
-          <select
-            value={effectiveAccountId ?? ''}
-            onChange={e => setAccountId(e.target.value)}
-            className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
-          >
-            {accounts.map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-        </div>
+        {type !== 'transfer' && (
+          <div>
+            <Label>Account</Label>
+            <select
+              value={effectiveAccountId ?? ''}
+              onChange={e => setAccountId(e.target.value)}
+              className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+            >
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Note */}
@@ -236,7 +318,7 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
             onClick={() => fileRef.current?.click()}
             className="mb-4 flex w-full items-center gap-2 rounded-2xl border border-dashed border-slate-300 p-3 text-sm text-slate-500 dark:border-slate-600"
           >
-            📎 {receipt ? receipt.name : 'Attach a receipt photo'}
+            📎 {receipt ? receipt.name : existingReceipt ? 'Replace existing receipt' : 'Attach a receipt photo'}
             {receipt && (
               <span
                 onClick={e => { e.stopPropagation(); setReceipt(null); if (fileRef.current) fileRef.current.value = '' }}
@@ -259,18 +341,20 @@ export default function AddSheet({ onClose, initial, onSaved }: { onClose: () =>
         </label>
       )}
 
+      {edit?.startsPeriod && (
+        <p className="mb-4 rounded-2xl bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+          ⚠️ This salary started a budget month. Editing it won't move the month's start date.
+        </p>
+      )}
+
       {error && <p className="mb-3 text-center text-sm font-medium text-rose-500">{error}</p>}
 
       <button
         onClick={save}
         disabled={saving}
-        className={`w-full rounded-2xl py-3.5 text-base font-bold text-white shadow-lg transition-transform active:scale-[0.98] disabled:opacity-50 ${
-          type === 'expense'
-            ? 'bg-gradient-to-r from-rose-500 to-orange-500 shadow-rose-500/30'
-            : 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/30'
-        }`}
+        className={`w-full rounded-2xl py-3.5 text-base font-bold text-white shadow-lg transition-transform active:scale-[0.98] disabled:opacity-50 ${meta.button}`}
       >
-        {saving ? 'Saving…' : type === 'expense' ? 'Add Expense' : 'Add Income'}
+        {saving ? 'Saving…' : edit ? 'Save changes' : meta.saveLabel}
       </button>
     </Sheet>
   )

@@ -192,8 +192,10 @@ export default function Dashboard() {
             <p className="mb-1.5 px-1 text-xs font-semibold text-slate-400 dark:text-slate-500">{friendlyDate(g.date)}</p>
             <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
               {g.items.map(t => {
+                const isTransfer = t.type === 'transfer'
                 const cat = catById.get(t.categoryId)
                 const acc = accById.get(t.accountId)
+                const toAcc = t.toAccountId ? accById.get(t.toAccountId) : undefined
                 return (
                   <button
                     key={t.id}
@@ -202,23 +204,23 @@ export default function Dashboard() {
                   >
                     <span
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
-                      style={{ backgroundColor: `${cat?.color ?? '#64748b'}22` }}
+                      style={{ backgroundColor: isTransfer ? '#0ea5e922' : `${cat?.color ?? '#64748b'}22` }}
                     >
-                      {cat?.emoji ?? '❓'}
+                      {isTransfer ? '⇄' : (cat?.emoji ?? '❓')}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{cat?.name ?? 'Unknown'}</span>
+                      <span className="block truncate text-sm font-medium">{isTransfer ? 'Transfer' : (cat?.name ?? 'Unknown')}</span>
                       <span className="block truncate text-xs text-slate-400">
-                        {acc?.name}
+                        {isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name}
                         {t.note && ` · ${t.note}`}
                       </span>
                     </span>
                     <span
                       className={`text-sm font-semibold tabular-nums ${
-                        t.type === 'expense' ? 'text-rose-500' : 'text-emerald-500'
+                        isTransfer ? 'text-sky-500' : t.type === 'expense' ? 'text-rose-500' : 'text-emerald-500'
                       }`}
                     >
-                      {t.type === 'expense' ? '−' : '+'}
+                      {isTransfer ? '' : t.type === 'expense' ? '−' : '+'}
                       {fmt(t.amountMinor, t.currency, { compactCents: true })}
                     </span>
                   </button>

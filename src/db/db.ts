@@ -1,7 +1,9 @@
 import Dexie, { type EntityTable } from 'dexie'
 
 export type Currency = 'LKR' | 'USD'
-export type TxnType = 'expense' | 'income'
+export type TxnType = 'expense' | 'income' | 'transfer'
+/** Types that have a category and count toward totals (i.e. not transfers). */
+export type CategoryKind = 'expense' | 'income'
 export type Theme = 'system' | 'light' | 'dark'
 
 export interface Category {
@@ -9,7 +11,7 @@ export interface Category {
   name: string
   emoji: string
   color: string
-  kind: TxnType
+  kind: CategoryKind
   builtin?: boolean
   /** expense categories only: monthly budget in LKR minor units (unset = no budget) */
   budgetMinor?: number
@@ -30,8 +32,12 @@ export interface Txn {
   /** amount in minor units (cents) of `currency` */
   amountMinor: number
   currency: Currency
+  /** empty string for transfers (no category) */
   categoryId: string
+  /** source account for expenses/transfers, destination for income */
   accountId: string
+  /** transfers only: destination account */
+  toAccountId?: string
   /** ISO date YYYY-MM-DD */
   date: string
   note: string
@@ -68,7 +74,7 @@ export interface Settings {
 export interface PendingTxn {
   id: string
   raw: string
-  type: TxnType
+  type: CategoryKind
   amountMinor: number
   currency: Currency
   date: string

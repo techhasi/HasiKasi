@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
+}
+
+html, body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900;
+  font-family: var(--font-sans);
+}
+
+.dark body {
+  @apply bg-[#0b1121] text-slate-100;
+}
+
+/* iOS safe areas */
+.pb-safe { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem); }
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+::-webkit-scrollbar { display: none; }
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1); }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in { animation: fade-in 0.2s ease-out; }

@@ -1,0 +1,165 @@
+import { useMemo, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db, DEFAULT_SETTINGS, type Txn } from '../db/db'
+import { computeTotals, txnsInPeriod } from '../lib/periods'
+import { fmt } from '../lib/money'
+import { friendlyDate, periodLabel } from '../lib/dates'
+import TxnDetail from '../components/TxnDetail'
+
+export default function Dashboard() {
+  const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
+  const periods = useLiveQuery(() => db.periods.orderBy('startDate').toArray(), [], [])
+  const txns = useLiveQuery(() => db.txns.toArray(), [], [])
+  const categories = useLiveQuery(() => db.categories.toArray(), [], [])
+  const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
+
+  // Period navigation: index into periods array, default = active (last)
+  const [periodOffset, setPeriodOffset] = useState(0) // 0 = latest
+  const [detail, setDetail] = useState<Txn | null>(null)
+
+  const period = periods.length ? periods[Math.max(0, periods.length - 1 - periodOffset)] : undefined
+
+  const totals = useMemo(
+    () => (period ? computeTotals(txns, period, settings?.usdRate ?? 300) : null),
+    [txns, period, settings?.usdRate]
+  )
+
+  const grouped = useMemo(() => {
+    if (!period) return []
+    const inPeriod = txnsInPeriod(txns, period).sort(
+      (a, b) => (a.date === b.date ? b.createdAt - a.createdAt : b.date.localeCompare(a.date))
+    )
+    const groups: { date: string; items: Txn[] }[] = []
+    for (const t of inPeriod) {
+      const g = groups[groups.length - 1]
+      if (g && g.date === t.date) g.items.push(t)
+      else groups.push({ date: t.date, items: [t] })
+    }
+    return groups
+  }, [txns, period])
+
+  const catById = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
+  const accById = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
+
+  return (
+    <div className="px-4 pt-6">
+      <header className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">My Budget</p>
+          <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
+        </div>
+      </header>
+
+      {/* Summary card */}
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 p-5 text-white shadow-xl shadow-indigo-500/30">
+        <div className="absolute -right-8 -top-10 h-40 w-40 rounded-full bg-white/10" />
+        <div className="absolute -right-16 top-8 h-40 w-40 rounded-full bg-white/5" />
+
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={() => setPeriodOffset(o => Math.min(o + 1, periods.length - 1))}
+            disabled={periodOffset >= periods.length - 1}
+            className="rounded-full bg-white/15 px-2.5 py-1 text-sm disabled:opacity-30"
+          >
+            ‹
+          </button>
+          <p className="text-sm font-medium text-indigo-100">
+            {period ? periodLabel(period.startDate, period.endDate) : '—'}
+            {periodOffset === 0 && <span className="ml-1.5 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold text-emerald-200">CURRENT</span>}
+          </p>
+          <button
+            onClick={() => setPeriodOffset(o => Math.max(o - 1, 0))}
+            disabled={periodOffset === 0}
+            className="rounded-full bg-white/15 px-2.5 py-1 text-sm disabled:opacity-30"
+          >
+            ›
+          </button>
+        </div>
+
+        <p className="text-center text-xs uppercase tracking-widest text-indigo-200">Balance</p>
+        <p className="mb-4 text-center text-4xl font-bold tabular-nums tracking-tight">
+          {totals ? fmt(totals.balanceMinor, 'LKR', { compactCents: true }) : '—'}
+        </p>
+
+        <div className="flex gap-3">
+          <div className="flex-1 rounded-2xl bg-white/12 p-3 backdrop-blur">
+            <p className="text-xs text-indigo-100">↓ Earning</p>
+            <p className="text-lg font-semibold tabular-nums text-emerald-300">
+              {totals ? fmt(totals.earningMinor, 'LKR', { compactCents: true }) : '—'}
+            </p>
+          </div>
+          <div className="flex-1 rounded-2xl bg-white/12 p-3 backdrop-blur">
+            <p className="text-xs text-indigo-100">↑ Spending</p>
+            <p className="text-lg font-semibold tabular-nums text-rose-300">
+              {totals ? fmt(totals.spendingMinor, 'LKR', { compactCents: true }) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {totals != null && totals.carryInMinor !== 0 && (
+          <p className="mt-3 text-center text-xs text-indigo-200">
+            includes {fmt(totals.carryInMinor, 'LKR', { compactCents: true })} carried over
+          </p>
+        )}
+      </section>
+
+      {/* Transactions */}
+      <section className="mt-6">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Transactions
+        </h2>
+
+        {grouped.length === 0 && (
+          <div className="rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-400 dark:border-slate-700">
+            <p className="mb-1 text-3xl">🌱</p>
+            <p className="text-sm">No transactions this period yet.</p>
+            <p className="text-xs">Tap + to add your first one.</p>
+          </div>
+        )}
+
+        {grouped.map(g => (
+          <div key={g.date} className="mb-4">
+            <p className="mb-1.5 px-1 text-xs font-semibold text-slate-400 dark:text-slate-500">{friendlyDate(g.date)}</p>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
+              {g.items.map(t => {
+                const cat = catById.get(t.categoryId)
+                const acc = accById.get(t.accountId)
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setDetail(t)}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left last:border-0 active:bg-slate-50 dark:border-slate-700/50 dark:active:bg-slate-700/30"
+                  >
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
+                      style={{ backgroundColor: `${cat?.color ?? '#64748b'}22` }}
+                    >
+                      {cat?.emoji ?? '❓'}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{cat?.name ?? 'Unknown'}</span>
+                      <span className="block truncate text-xs text-slate-400">
+                        {acc?.name}
+                        {t.note && ` · ${t.note}`}
+                      </span>
+                    </span>
+                    <span
+                      className={`text-sm font-semibold tabular-nums ${
+                        t.type === 'expense' ? 'text-rose-500' : 'text-emerald-500'
+                      }`}
+                    >
+                      {t.type === 'expense' ? '−' : '+'}
+                      {fmt(t.amountMinor, t.currency, { compactCents: true })}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {detail && <TxnDetail txn={detail} onClose={() => setDetail(null)} />}
+    </div>
+  )
+}

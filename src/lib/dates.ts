@@ -32,3 +32,24 @@ export function friendlyDate(iso: string): string {
 export function periodLabel(start: string, end: string | null): string {
   return `${shortDate(start)} – ${end ? shortDate(end) : 'now'}`
 }
+
+/** Last day of the current month as ISO date. */
+export function endOfMonthISO(): string {
+  const d = new Date()
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+  return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`
+}
+
+/** "YYYY-MM" of today, used to track once-a-month actions. */
+export function currentMonth(): string {
+  return todayISO().slice(0, 7)
+}
+
+/** Whole days from today until an ISO date (0 = today, negative = past). */
+export function daysUntil(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number)
+  const target = new Date(y, m - 1, d)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((target.getTime() - today.getTime()) / 86400000)
+}

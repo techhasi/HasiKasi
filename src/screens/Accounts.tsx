@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, DEFAULT_SETTINGS, type Account, type Investment, type Recurring } from '../db/db'
 import { fmt, toLKR, parseAmount } from '../lib/money'
-import { shortDate } from '../lib/dates'
+import { shortDate, currentMonth, endOfMonthISO } from '../lib/dates'
+import { computeBalances } from '../lib/balances'
 import Sheet from '../components/Sheet'
 import RecurringSheet from '../components/RecurringSheet'
 import InvestmentSheet, { INVESTMENT_TYPES } from '../components/InvestmentSheet'
@@ -28,20 +29,7 @@ export default function Accounts() {
 
   const usdRate = settings?.usdRate ?? 300
 
-  const balances = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const a of accounts) map.set(a.id, a.openingMinor)
-    for (const t of txns) {
-      const lkr = toLKR(t.amountMinor, t.currency, usdRate)
-      if (t.type === 'transfer') {
-        map.set(t.accountId, (map.get(t.accountId) ?? 0) - lkr)
-        if (t.toAccountId) map.set(t.toAccountId, (map.get(t.toAccountId) ?? 0) + lkr)
-      } else {
-        map.set(t.accountId, (map.get(t.accountId) ?? 0) + (t.type === 'expense' ? -lkr : lkr))
-      }
-    }
-    return map
-  }, [accounts, txns, usdRate])
+  const balances = useMemo(() => computeBalances(accounts, txns, usdRate), [accounts, txns, usdRate])
 
   const accountsTotal = [...balances.values()].reduce((s, v) => s + v, 0)
   const investedTotal = investments.reduce((s, i) => s + toLKR(i.valueMinor, i.currency, usdRate), 0)
@@ -82,6 +70,11 @@ export default function Accounts() {
                   {a.type}
                   {a.numberHint && ` · •••${a.numberHint}`}
                 </p>
+                {a.type === 'card' && a.lastPaidMonth !== currentMonth() && (a.statementMinor ?? Math.max(0, -bal)) > 0 && (
+                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                    {fmt(a.statementMinor ?? -bal, 'LKR', { compactCents: true })} due by {shortDate(endOfMonthISO())}
+                  </p>
+                )}
               </div>
               <p className={`text-base font-bold tabular-nums ${bal < 0 ? 'text-rose-500' : ''}`}>
                 {fmt(bal, 'LKR', { compactCents: true })}
@@ -195,6 +188,7 @@ function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }
   const [color, setColor] = useState(edit?.color ?? ACCOUNT_COLORS[1])
   const [opening, setOpening] = useState(edit && edit.openingMinor ? (edit.openingMinor / 100).toFixed(2) : '')
   const [numberHint, setNumberHint] = useState(edit?.numberHint ?? '')
+  const [statement, setStatement] = useState(edit?.statementMinor ? (edit.statementMinor / 100).toFixed(2) : '')
   const [error, setError] = useState('')
 
   async function save() {
@@ -202,9 +196,16 @@ function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }
     const openingMinor = opening.trim() ? parseAmount(opening) : 0
     if (openingMinor === null) return setError('Invalid opening balance')
     const hint = numberHint.replace(/\D/g, '').slice(-4)
-    const fields = { name: name.trim(), type, color, openingMinor, numberHint: hint || undefined }
+    const fields: Partial<Account> = { name: name.trim(), type, color, openingMinor, numberHint: hint || undefined }
+    if (type === 'card') {
+      const statementMinor = statement.trim() ? parseAmount(statement) : undefined
+      if (statement.trim() && !statementMinor) return setError('Invalid due amount')
+      fields.statementMinor = statementMinor ?? undefined
+      // A newly entered statement means a new billing cycle — show the reminder again
+      if (statementMinor && statementMinor !== edit?.statementMinor) fields.lastPaidMonth = undefined
+    }
     if (edit) await db.accounts.update(edit.id, fields)
-    else await db.accounts.add({ id: uid(), ...fields })
+    else await db.accounts.add({ id: uid(), openingMinor: 0, ...fields } as Account)
     onClose()
   }
 
@@ -257,6 +258,20 @@ function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }
       <p className="mb-4 text-xs text-slate-400">
         SMS imports mentioning these digits will pick this account automatically.
       </p>
+      {type === 'card' && (
+        <>
+          <input
+            placeholder="This month's due amount (Rs, from statement)"
+            inputMode="decimal"
+            value={statement}
+            onChange={e => setStatement(e.target.value)}
+            className="mb-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+          <p className="mb-4 text-xs text-slate-400">
+            Due by the last day of the month. Leave empty to use the card's outstanding balance.
+          </p>
+        </>
+      )}
       {error && <p className="mb-3 text-center text-sm font-medium text-rose-500">{error}</p>}
       <button onClick={save} className="w-full rounded-2xl bg-indigo-500 py-3.5 font-bold text-white shadow-lg shadow-indigo-500/30">
         {edit ? 'Save changes' : 'Add account'}

@@ -26,6 +26,10 @@ export interface Account {
   openingMinor: number
   /** last 3-4 digits of the card/account, used to auto-match SMS imports */
   numberHint?: string
+  /** cards: this month's statement amount due (LKR minor); unset = use outstanding balance */
+  statementMinor?: number
+  /** cards: "YYYY-MM" when the bill was last marked paid, hides the due reminder */
+  lastPaidMonth?: string
 }
 
 export interface Txn {

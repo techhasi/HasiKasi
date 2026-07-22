@@ -16,6 +16,7 @@ export interface AddInitial {
   date?: string
   note?: string
   accountId?: string
+  toAccountId?: string
 }
 
 const TYPE_META: Record<TxnType, { label: string; active: string; button: string; saveLabel: string }> = {
@@ -61,7 +62,7 @@ export default function AddSheet({
   const [currency, setCurrency] = useState<Currency | null>(edit?.currency ?? initial?.currency ?? null)
   const [categoryId, setCategoryId] = useState<string | null>(edit?.categoryId || null)
   const [accountId, setAccountId] = useState<string | null>(edit?.accountId ?? initial?.accountId ?? null)
-  const [toAccountId, setToAccountId] = useState<string | null>(edit?.toAccountId ?? null)
+  const [toAccountId, setToAccountId] = useState<string | null>(edit?.toAccountId ?? initial?.toAccountId ?? null)
   const [date, setDate] = useState(edit?.date ?? initial?.date ?? todayISO())
   const [note, setNote] = useState(edit?.note ?? initial?.note ?? '')
   const [receipt, setReceipt] = useState<File | null>(null)

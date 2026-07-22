@@ -3,11 +3,14 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Txn } from '../db/db'
 import { computeTotals, txnsInPeriod } from '../lib/periods'
 import { logRecurring, skipRecurring } from '../lib/recurring'
+import { computeBalances } from '../lib/balances'
 import { fmt, toLKR } from '../lib/money'
-import { friendlyDate, periodLabel, todayISO } from '../lib/dates'
+import { friendlyDate, periodLabel, todayISO, currentMonth, endOfMonthISO, daysUntil, shortDate } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
 import SmsImport from '../components/SmsImport'
 import SearchSheet from '../components/SearchSheet'
+import AddSheet from '../components/AddSheet'
+import type { Account } from '../db/db'
 
 export default function Dashboard() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
@@ -23,6 +26,7 @@ export default function Dashboard() {
   const [detail, setDetail] = useState<Txn | null>(null)
   const [smsOpen, setSmsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [payCard, setPayCard] = useState<{ account: Account; dueMinor: number } | null>(null)
 
   const period = periods.length ? periods[Math.max(0, periods.length - 1 - periodOffset)] : undefined
 
@@ -44,6 +48,16 @@ export default function Dashboard() {
       .map(c => ({ cat: c, spent: spent.get(c.id) ?? 0, budget: c.budgetMinor! }))
       .sort((a, b) => b.spent / b.budget - a.spent / a.budget)
   }, [txns, period, categories, settings?.usdRate])
+
+  // Credit card dues: statement amount (or outstanding balance), due end of month
+  const cardsDue = useMemo(() => {
+    const month = currentMonth()
+    const balances = computeBalances(accounts, txns, settings?.usdRate ?? 300)
+    return accounts
+      .filter(a => a.type === 'card' && a.lastPaidMonth !== month)
+      .map(a => ({ account: a, dueMinor: a.statementMinor ?? Math.max(0, -(balances.get(a.id) ?? 0)) }))
+      .filter(c => c.dueMinor > 0)
+  }, [accounts, txns, settings?.usdRate])
 
   const grouped = useMemo(() => {
     if (!period) return []
@@ -179,6 +193,47 @@ export default function Dashboard() {
         </section>
       )}
 
+      {/* Credit card dues */}
+      {cardsDue.length > 0 && (
+        <section className="mt-6">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Card payments · due {shortDate(endOfMonthISO())}
+          </h2>
+          <div
+            className={`overflow-hidden rounded-2xl border ${
+              daysUntil(endOfMonthISO()) <= 5
+                ? 'border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10'
+                : 'border-sky-200 bg-sky-50 dark:border-sky-500/20 dark:bg-sky-500/10'
+            }`}
+          >
+            {cardsDue.map(c => (
+              <div key={c.account.id} className="flex items-center gap-3 border-b border-slate-200/40 px-4 py-3 last:border-0 dark:border-white/5">
+                <span className="text-lg">💳</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{c.account.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {fmt(c.dueMinor, 'LKR', { compactCents: true })} ·{' '}
+                    {daysUntil(endOfMonthISO()) === 0 ? 'due today!' : `${daysUntil(endOfMonthISO())} days left`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => db.accounts.update(c.account.id, { lastPaidMonth: currentMonth(), statementMinor: undefined })}
+                  className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-sm dark:bg-slate-800"
+                >
+                  Dismiss
+                </button>
+                <button
+                  onClick={() => setPayCard(c)}
+                  className="rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/30"
+                >
+                  Pay ✓
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Budgets */}
       {budgets.length > 0 && (
         <section className="mt-6">
@@ -281,6 +336,20 @@ export default function Dashboard() {
       {detail && <TxnDetail txn={detail} onClose={() => setDetail(null)} />}
       {smsOpen && <SmsImport onClose={() => setSmsOpen(false)} />}
       {searchOpen && <SearchSheet onClose={() => setSearchOpen(false)} />}
+      {payCard && (
+        <AddSheet
+          initial={{
+            type: 'transfer',
+            amount: (payCard.dueMinor / 100).toFixed(2),
+            toAccountId: payCard.account.id,
+            note: `${payCard.account.name} bill`
+          }}
+          onSaved={() =>
+            db.accounts.update(payCard.account.id, { lastPaidMonth: currentMonth(), statementMinor: undefined })
+          }
+          onClose={() => setPayCard(null)}
+        />
+      )}
     </div>
   )
 }

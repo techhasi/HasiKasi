@@ -3,11 +3,13 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Settings } from '../db/db'
 import { exportBackup, importBackup } from '../lib/backup'
 import { autoBackup } from '../lib/cloudBackup'
+import GuideSheet from '../components/GuideSheet'
 
 export default function SettingsScreen() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
   const importRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
+  const [guideOpen, setGuideOpen] = useState(false)
 
   if (!settings) return null
 
@@ -27,6 +29,14 @@ export default function SettingsScreen() {
   return (
     <div className="px-4 pt-6">
       <h1 className="mb-4 text-2xl font-bold tracking-tight">Settings</h1>
+
+      <button
+        onClick={() => setGuideOpen(true)}
+        className="mb-5 flex w-full items-center justify-between rounded-3xl bg-gradient-to-r from-indigo-500 to-purple-600 p-4 text-white shadow-lg shadow-indigo-500/30"
+      >
+        <span className="text-sm font-bold">📖 How HasiKasi works</span>
+        <span className="text-lg">›</span>
+      </button>
 
       <Section title="Preferences">
         <Row label="Default currency" hint="Used when adding transactions">
@@ -194,6 +204,8 @@ export default function SettingsScreen() {
       <p className="pb-4 text-center text-xs text-slate-400">
         HasiKasi · local-first · your data never leaves this device
       </p>
+
+      {guideOpen && <GuideSheet onClose={() => setGuideOpen(false)} />}
     </div>
   )
 }

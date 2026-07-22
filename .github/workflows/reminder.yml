@@ -10,6 +10,7 @@ on:
   schedule:
     - cron: '30 15 * * *' # daily 21:00 Asia/Colombo — log today's spending
     - cron: '0 14 25 * *' # 25th 19:30 Asia/Colombo — salary week heads-up
+    - cron: '0 14 28 * *' # 28th 19:30 Asia/Colombo — credit card due by month end
   workflow_dispatch:
 
 jobs:
@@ -30,6 +31,9 @@ jobs:
           if [ "${{ github.event.schedule }}" = "0 14 25 * *" ]; then
             echo "subject=💼 Salary week — ready to start a new budget month?" >> "$GITHUB_OUTPUT"
             echo "line=Your salary usually lands between the 25th and 31st. When it arrives, log it in HasiKasi (category: Salary) to close this budget month and start the next one." >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 14 28 * *" ]; then
+            echo "subject=💳 Credit card payment due by month end" >> "$GITHUB_OUTPUT"
+            echo "line=Your credit card bill is due by the last day of the month. Open HasiKasi to see the amount and mark it paid." >> "$GITHUB_OUTPUT"
           else
             echo "subject=📝 Log today's spending" >> "$GITHUB_OUTPUT"
             echo "line=Take a minute to add today's expenses to HasiKasi — future you will thank you." >> "$GITHUB_OUTPUT"

@@ -1,0 +1,91 @@
+import Sheet from './Sheet'
+
+const SECTIONS: { title: string; body: string[] }[] = [
+  {
+    title: '🗓️ Budget months',
+    body: [
+      'HasiKasi doesn\'t use calendar months. A "month" runs from one salary to the day before the next.',
+      'When you add an income with the Salary category, a toggle starts a new budget month from that date. Leftover money rolls into the new month if Carry over is on (Settings).'
+    ]
+  },
+  {
+    title: '➕ Adding transactions',
+    body: [
+      'Tap the big + button. Pick Expense, Income, or Transfer (moving money between accounts — doesn\'t count as spending).',
+      'Expenses can have a receipt photo attached. Create your own categories with the ＋ New button in the category grid.',
+      'If a similar transaction (same amount, ±2 days) exists, you\'ll get a duplicate warning — tap "Add anyway" if it\'s genuinely new.',
+      'Tap any transaction in the list to view, edit, or delete it.'
+    ]
+  },
+  {
+    title: '📥 SMS import',
+    body: [
+      'Copy bank SMS messages and tap the 📥 button on Home, then "Paste & scan". Detected transactions wait in an inbox for your approval.',
+      'Set the last 4 digits on each account (Accounts → tap account) so imports pick the right account automatically.',
+      'For automation: create an iOS Shortcut that copies bank SMS to the clipboard when they arrive (guide inside the import screen).'
+    ]
+  },
+  {
+    title: '🎯 Budgets',
+    body: [
+      'In Stats → Spending, tap a category to set a monthly limit. Progress bars appear on Home and in Stats — amber past 85%, red when over.'
+    ]
+  },
+  {
+    title: '🔁 Recurring, loans & card bills',
+    body: [
+      'Add rent, subscriptions, and loan installments in Accounts → Recurring & loans. When due, they appear on Home — Log ✓ records the expense, Skip moves to next cycle. Loans show payoff progress.',
+      'Credit cards: set the statement amount when the bill arrives (Accounts → tap the card). It\'s due by the last day of the month — Home shows a countdown. Pay ✓ records a transfer from your bank to the card.'
+    ]
+  },
+  {
+    title: '💳 Accounts, investments & net worth',
+    body: [
+      'Accounts tracks cash, bank and card balances — they update automatically from your transactions.',
+      'Investments & savings (FDs, stocks, crypto, EPF) are tracked separately and count toward net worth. Tap one to update its value.'
+    ]
+  },
+  {
+    title: '☁️ Backups',
+    body: [
+      'Your data lives only on this device. Two safety nets:',
+      '1. Settings → Export backup: downloads everything as a JSON file (keep one in iCloud Files).',
+      '2. Cloud backup: connects a private GitHub repo — a daily backup plus one snapshot per budget month, automatic when you open the app.',
+      'Restore backup replaces all data with the chosen file.'
+    ]
+  },
+  {
+    title: '🔔 Reminders',
+    body: [
+      'Email: daily nudge, salary-week (25th) and card-due (28th) reminders via GitHub Actions — setup guide in Settings → Reminders.',
+      'Phone notification: a simple iOS Shortcuts daily automation — guide in the same place.'
+    ]
+  },
+  {
+    title: '⚠️ Important',
+    body: [
+      'Always open HasiKasi from the home-screen icon. Safari tabs keep a separate copy of data.',
+      'Amounts are in LKR by default; USD entries are converted using the rate in Settings for totals.'
+    ]
+  }
+]
+
+/** In-app "how it works" guide, opened from Settings. */
+export default function GuideSheet({ onClose }: { onClose: () => void }) {
+  return (
+    <Sheet onClose={onClose} title="📖 How HasiKasi works">
+      <div className="space-y-4">
+        {SECTIONS.map(s => (
+          <div key={s.title} className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/60">
+            <h3 className="mb-1.5 text-sm font-bold">{s.title}</h3>
+            {s.body.map((line, i) => (
+              <p key={i} className="mb-1 text-xs leading-relaxed text-slate-500 last:mb-0 dark:text-slate-400">
+                {line}
+              </p>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Sheet>
+  )
+}

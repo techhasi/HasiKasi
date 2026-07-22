@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
-      APP_URL: https://techhasi.github.io/Budgeting-app/
+      APP_URL: https://techhasi.github.io/HasiKasi/
     steps:
       - name: Skip when mail secrets are not configured
         if: env.MAIL_USERNAME == ''

@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Deployed at https://<user>.github.io/Budgeting-app/
-const BASE = '/Budgeting-app/'
+// Deployed at https://<user>.github.io/HasiKasi/
+const BASE = '/HasiKasi/'
 
 export default defineConfig({
   base: BASE,

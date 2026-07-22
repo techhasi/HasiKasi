@@ -1,0 +1,54 @@
+# Email reminders — requires three repository secrets (Settings → Secrets → Actions):
+#   MAIL_USERNAME  Gmail address used to send (needs a Gmail App Password)
+#   MAIL_PASSWORD  the 16-character Gmail App Password
+#   MAIL_TO        address that receives the reminders
+# If the secrets are missing the job skips quietly.
+# Times are UTC — adjust the crons below for your timezone (Asia/Colombo = UTC+5:30).
+name: Email reminders
+
+on:
+  schedule:
+    - cron: '30 15 * * *' # daily 21:00 Asia/Colombo — log today's spending
+    - cron: '0 14 25 * *' # 25th 19:30 Asia/Colombo — salary week heads-up
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    env:
+      MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+      APP_URL: https://techhasi.github.io/Budgeting-app/
+    steps:
+      - name: Skip when mail secrets are not configured
+        if: env.MAIL_USERNAME == ''
+        run: echo "MAIL_USERNAME secret not set — skipping reminder."
+
+      - name: Compose message
+        if: env.MAIL_USERNAME != ''
+        id: msg
+        run: |
+          if [ "${{ github.event.schedule }}" = "0 14 25 * *" ]; then
+            echo "subject=💼 Salary week — ready to start a new budget month?" >> "$GITHUB_OUTPUT"
+            echo "line=Your salary usually lands between the 25th and 31st. When it arrives, log it in My Budget (category: Salary) to close this budget month and start the next one." >> "$GITHUB_OUTPUT"
+          else
+            echo "subject=📝 Log today's spending" >> "$GITHUB_OUTPUT"
+            echo "line=Take a minute to add today's expenses to My Budget — future you will thank you." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send email
+        if: env.MAIL_USERNAME != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          to: ${{ secrets.MAIL_TO }}
+          from: My Budget <${{ secrets.MAIL_USERNAME }}>
+          subject: ${{ steps.msg.outputs.subject }}
+          html_body: |
+            <div style="font-family:-apple-system,sans-serif;max-width:420px;margin:0 auto;padding:24px;">
+              <h2 style="color:#6366f1;">My Budget</h2>
+              <p style="font-size:15px;color:#334155;line-height:1.6;">${{ steps.msg.outputs.line }}</p>
+              <p style="font-size:13px;color:#94a3b8;">Open the app from your home-screen icon — that's where your data lives.</p>
+            </div>

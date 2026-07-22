@@ -58,6 +58,56 @@ export default function SettingsScreen() {
         </Row>
       </Section>
 
+      <Section title="Reminders">
+        <div className="px-4 py-3.5">
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-medium">
+              🔔 Daily notification on iPhone
+              <span className="ml-1 text-xs text-slate-400">(2-min setup, no accounts)</span>
+            </summary>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              <li>Open the <b>Shortcuts</b> app → <b>Automation</b> tab → <b>+</b></li>
+              <li>Choose <b>Time of Day</b> → set e.g. 9:00 PM, Daily → <b>Next</b></li>
+              <li>Pick <b>New Blank Automation</b> → <b>Add Action</b> → search <b>Show Notification</b></li>
+              <li>Set the text to “Time to log today's spending 📝” → tap <b>Done</b></li>
+              <li>Select <b>Run Immediately</b> so it fires without asking</li>
+            </ol>
+          </details>
+        </div>
+        <div className="border-t border-slate-100 px-4 py-3.5 dark:border-slate-700/50">
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-medium">
+              📧 Email reminders
+              <span className="ml-1 text-xs text-slate-400">(daily + salary week)</span>
+            </summary>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              A GitHub Action emails you every evening, plus a salary-week heads-up on the 25th. One-time setup:
+            </p>
+            <ol className="mt-1.5 list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              <li>
+                In your Google account: <b>Security → 2-Step Verification → App passwords</b> → create one for “My Budget”
+              </li>
+              <li>
+                In the GitHub repo: <b>Settings → Secrets and variables → Actions</b> → add three secrets:{' '}
+                <b>MAIL_USERNAME</b> (your Gmail), <b>MAIL_PASSWORD</b> (the app password), <b>MAIL_TO</b> (where to receive)
+              </li>
+              <li>
+                Test it: repo <b>Actions → Email reminders → Run workflow</b>
+              </li>
+            </ol>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Reminder times can be changed in <code>.github/workflows/reminder.yml</code>.
+            </p>
+          </details>
+        </div>
+        <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-700/50">
+          <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
+            ⚠️ Always open the app from your <b>home-screen icon</b> — Safari keeps separate storage, so
+            transactions logged in a Safari tab won't appear here.
+          </p>
+        </div>
+      </Section>
+
       <Section title="Data">
         <Row label="Export backup" hint="Download all data as a JSON file">
           <button onClick={() => exportBackup()} className="rounded-xl bg-indigo-500 px-3.5 py-2 text-sm font-semibold text-white">

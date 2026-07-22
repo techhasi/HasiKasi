@@ -62,6 +62,19 @@ export interface Settings {
   usdRate: number
 }
 
+/** A bank-SMS candidate awaiting user approval in the import inbox. */
+export interface PendingTxn {
+  id: string
+  raw: string
+  type: TxnType
+  amountMinor: number
+  currency: Currency
+  date: string
+  merchant: string
+  accountHint: string | null
+  createdAt: number
+}
+
 export const db = new Dexie('budget-app') as Dexie & {
   txns: EntityTable<Txn, 'id'>
   categories: EntityTable<Category, 'id'>
@@ -69,6 +82,7 @@ export const db = new Dexie('budget-app') as Dexie & {
   receipts: EntityTable<Receipt, 'txnId'>
   periods: EntityTable<Period, 'id'>
   settings: EntityTable<Settings, 'id'>
+  pending: EntityTable<PendingTxn, 'id'>
 }
 
 db.version(1).stores({
@@ -78,6 +92,10 @@ db.version(1).stores({
   receipts: 'txnId',
   periods: 'id, startDate',
   settings: 'id'
+})
+
+db.version(2).stores({
+  pending: 'id, createdAt'
 })
 
 export const uid = () => crypto.randomUUID()

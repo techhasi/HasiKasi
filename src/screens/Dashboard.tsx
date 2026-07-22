@@ -5,6 +5,7 @@ import { computeTotals, txnsInPeriod } from '../lib/periods'
 import { fmt } from '../lib/money'
 import { friendlyDate, periodLabel } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
+import SmsImport from '../components/SmsImport'
 
 export default function Dashboard() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
@@ -12,10 +13,12 @@ export default function Dashboard() {
   const txns = useLiveQuery(() => db.txns.toArray(), [], [])
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
+  const pendingCount = useLiveQuery(() => db.pending.count(), [], 0)
 
   // Period navigation: index into periods array, default = active (last)
   const [periodOffset, setPeriodOffset] = useState(0) // 0 = latest
   const [detail, setDetail] = useState<Txn | null>(null)
+  const [smsOpen, setSmsOpen] = useState(false)
 
   const period = periods.length ? periods[Math.max(0, periods.length - 1 - periodOffset)] : undefined
 
@@ -48,6 +51,18 @@ export default function Dashboard() {
           <p className="text-sm text-slate-500 dark:text-slate-400">My Budget</p>
           <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
         </div>
+        <button
+          onClick={() => setSmsOpen(true)}
+          aria-label="Import from SMS"
+          className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-slate-800/60"
+        >
+          📥
+          {pendingCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+              {pendingCount}
+            </span>
+          )}
+        </button>
       </header>
 
       {/* Summary card */}
@@ -160,6 +175,7 @@ export default function Dashboard() {
       </section>
 
       {detail && <TxnDetail txn={detail} onClose={() => setDetail(null)} />}
+      {smsOpen && <SmsImport onClose={() => setSmsOpen(false)} />}
     </div>
   )
 }

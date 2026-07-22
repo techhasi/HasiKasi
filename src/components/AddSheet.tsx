@@ -9,18 +9,26 @@ import Sheet from './Sheet'
 
 const CATEGORY_COLORS = ['#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#ef4444', '#64748b']
 
-export default function AddSheet({ onClose }: { onClose: () => void }) {
+export interface AddInitial {
+  type?: TxnType
+  amount?: string
+  currency?: Currency
+  date?: string
+  note?: string
+}
+
+export default function AddSheet({ onClose, initial, onSaved }: { onClose: () => void; initial?: AddInitial; onSaved?: () => void }) {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
 
-  const [type, setType] = useState<TxnType>('expense')
-  const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState<Currency | null>(null)
+  const [type, setType] = useState<TxnType>(initial?.type ?? 'expense')
+  const [amount, setAmount] = useState(initial?.amount ?? '')
+  const [currency, setCurrency] = useState<Currency | null>(initial?.currency ?? null)
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [accountId, setAccountId] = useState<string | null>(null)
-  const [date, setDate] = useState(todayISO())
-  const [note, setNote] = useState('')
+  const [date, setDate] = useState(initial?.date ?? todayISO())
+  const [note, setNote] = useState(initial?.note ?? '')
   const [receipt, setReceipt] = useState<File | null>(null)
   const [startsPeriod, setStartsPeriod] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -78,6 +86,7 @@ export default function AddSheet({ onClose }: { onClose: () => void }) {
         const blob = await compressImage(receipt)
         await db.receipts.add({ txnId: id, blob })
       }
+      onSaved?.()
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')

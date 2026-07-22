@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
-import { db, DEFAULT_SETTINGS, type TxnType } from '../db/db'
+import { db, DEFAULT_SETTINGS, type Category, type TxnType } from '../db/db'
 import { txnsInPeriod } from '../lib/periods'
 import { fmt, toLKR } from '../lib/money'
 import { periodLabel } from '../lib/dates'
+import BudgetSheet from '../components/BudgetSheet'
 
 export default function Stats() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
@@ -14,6 +15,7 @@ export default function Stats() {
 
   const [kind, setKind] = useState<TxnType>('expense')
   const [periodOffset, setPeriodOffset] = useState(0)
+  const [budgetTarget, setBudgetTarget] = useState<{ cat: Category; spent: number } | null>(null)
 
   const period = periods.length ? periods[Math.max(0, periods.length - 1 - periodOffset)] : undefined
   const usdRate = settings?.usdRate ?? 300
@@ -29,7 +31,15 @@ export default function Stats() {
     return [...byCat.entries()]
       .map(([id, minor]) => {
         const c = catById.get(id)
-        return { name: c?.name ?? 'Unknown', emoji: c?.emoji ?? '❓', color: c?.color ?? '#64748b', minor }
+        return {
+          id,
+          cat: c,
+          name: c?.name ?? 'Unknown',
+          emoji: c?.emoji ?? '❓',
+          color: c?.color ?? '#64748b',
+          budgetMinor: c?.budgetMinor,
+          minor
+        }
       })
       .sort((a, b) => b.minor - a.minor)
   }, [txns, period, kind, categories, usdRate])
@@ -105,27 +115,52 @@ export default function Stats() {
           </div>
 
           {/* Category breakdown */}
+          {kind === 'expense' && (
+            <p className="mb-2 text-center text-xs text-slate-400">Tap a category to set its monthly budget</p>
+          )}
           <div className="overflow-hidden rounded-3xl bg-white shadow-sm dark:bg-slate-800/60">
             {data.map(d => {
               const pct = total ? Math.round((d.minor / total) * 100) : 0
+              const budget = kind === 'expense' ? d.budgetMinor : undefined
+              const usage = budget ? d.minor / budget : null
+              const over = usage !== null && usage > 1
+              const barPct = usage !== null ? Math.min(100, Math.round(usage * 100)) : pct
+              const barColor = over ? '#ef4444' : usage !== null && usage > 0.85 ? '#f59e0b' : d.color
               return (
-                <div key={d.name} className="border-b border-slate-100 px-4 py-3 last:border-0 dark:border-slate-700/50">
+                <button
+                  key={d.id}
+                  onClick={() => kind === 'expense' && d.cat && setBudgetTarget({ cat: d.cat, spent: d.minor })}
+                  className="block w-full border-b border-slate-100 px-4 py-3 text-left last:border-0 active:bg-slate-50 dark:border-slate-700/50 dark:active:bg-slate-700/30"
+                >
                   <div className="mb-1.5 flex items-center gap-3">
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl text-base" style={{ backgroundColor: `${d.color}22` }}>
                       {d.emoji}
                     </span>
-                    <span className="flex-1 text-sm font-medium">{d.name}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{d.name}</span>
+                      {budget != null && (
+                        <span className={`block text-xs ${over ? 'font-semibold text-rose-500' : 'text-slate-400'}`}>
+                          {over
+                            ? `${fmt(d.minor - budget, 'LKR', { compactCents: true })} over budget`
+                            : `of ${fmt(budget, 'LKR', { compactCents: true })} budget`}
+                        </span>
+                      )}
+                    </span>
                     <span className="text-sm font-semibold tabular-nums">{fmt(d.minor, 'LKR', { compactCents: true })}</span>
-                    <span className="w-9 text-right text-xs text-slate-400">{pct}%</span>
+                    <span className="w-9 text-right text-xs text-slate-400">{usage !== null ? `${Math.round(usage * 100)}%` : `${pct}%`}</span>
                   </div>
                   <div className="ml-12 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: d.color }} />
+                    <div className="h-full rounded-full" style={{ width: `${barPct}%`, backgroundColor: barColor }} />
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
         </>
+      )}
+
+      {budgetTarget && (
+        <BudgetSheet category={budgetTarget.cat} spentMinor={budgetTarget.spent} onClose={() => setBudgetTarget(null)} />
       )}
     </div>
   )

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Txn } from '../db/db'
 import { computeTotals, txnsInPeriod } from '../lib/periods'
-import { fmt } from '../lib/money'
+import { fmt, toLKR } from '../lib/money'
 import { friendlyDate, periodLabel } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
 import SmsImport from '../components/SmsImport'
@@ -26,6 +26,20 @@ export default function Dashboard() {
     () => (period ? computeTotals(txns, period, settings?.usdRate ?? 300) : null),
     [txns, period, settings?.usdRate]
   )
+
+  // Budget progress for the displayed period (all budgeted categories, even with no spending)
+  const budgets = useMemo(() => {
+    if (!period) return []
+    const spent = new Map<string, number>()
+    for (const t of txnsInPeriod(txns, period)) {
+      if (t.type !== 'expense') continue
+      spent.set(t.categoryId, (spent.get(t.categoryId) ?? 0) + toLKR(t.amountMinor, t.currency, settings?.usdRate ?? 300))
+    }
+    return categories
+      .filter(c => c.kind === 'expense' && c.budgetMinor != null)
+      .map(c => ({ cat: c, spent: spent.get(c.id) ?? 0, budget: c.budgetMinor! }))
+      .sort((a, b) => b.spent / b.budget - a.spent / a.budget)
+  }, [txns, period, categories, settings?.usdRate])
 
   const grouped = useMemo(() => {
     if (!period) return []
@@ -117,6 +131,47 @@ export default function Dashboard() {
           </p>
         )}
       </section>
+
+      {/* Budgets */}
+      {budgets.length > 0 && (
+        <section className="mt-6">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Budgets
+          </h2>
+          <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
+            {budgets.map(({ cat, spent, budget }) => {
+              const usage = spent / budget
+              const over = usage > 1
+              const barColor = over ? '#ef4444' : usage > 0.85 ? '#f59e0b' : cat.color
+              return (
+                <div key={cat.id} className="border-b border-slate-100 px-4 py-3 last:border-0 dark:border-slate-700/50">
+                  <div className="mb-1.5 flex items-center gap-2.5">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl text-sm" style={{ backgroundColor: `${cat.color}22` }}>
+                      {cat.emoji}
+                    </span>
+                    <span className="flex-1 truncate text-sm font-medium">{cat.name}</span>
+                    <span className={`text-xs font-semibold tabular-nums ${over ? 'text-rose-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {fmt(spent, 'LKR', { compactCents: true })}
+                      <span className="font-normal text-slate-400"> / {fmt(budget, 'LKR', { compactCents: true })}</span>
+                    </span>
+                  </div>
+                  <div className="ml-[42px] h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(100, Math.round(usage * 100))}%`, backgroundColor: barColor }}
+                    />
+                  </div>
+                  {over && (
+                    <p className="ml-[42px] mt-1 text-[11px] font-semibold text-rose-500">
+                      {fmt(spent - budget, 'LKR', { compactCents: true })} over
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Transactions */}
       <section className="mt-6">

@@ -11,6 +11,8 @@ export interface Category {
   color: string
   kind: TxnType
   builtin?: boolean
+  /** expense categories only: monthly budget in LKR minor units (unset = no budget) */
+  budgetMinor?: number
 }
 
 export interface Account {

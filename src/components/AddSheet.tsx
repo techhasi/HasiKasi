@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, DEFAULT_SETTINGS, type Currency, type Txn, type TxnType } from '../db/db'
-import { parseAmount, CURRENCY_SYMBOL } from '../lib/money'
-import { todayISO } from '../lib/dates'
+import { parseAmount, CURRENCY_SYMBOL, fmt } from '../lib/money'
+import { todayISO, addDaysISO, friendlyDate } from '../lib/dates'
 import { compressImage } from '../lib/image'
 import { startNewPeriod } from '../lib/periods'
 import Sheet from './Sheet'
@@ -15,6 +15,7 @@ export interface AddInitial {
   currency?: Currency
   date?: string
   note?: string
+  accountId?: string
 }
 
 const TYPE_META: Record<TxnType, { label: string; active: string; button: string; saveLabel: string }> = {
@@ -59,7 +60,7 @@ export default function AddSheet({
   const [amount, setAmount] = useState(edit ? (edit.amountMinor / 100).toFixed(2) : (initial?.amount ?? ''))
   const [currency, setCurrency] = useState<Currency | null>(edit?.currency ?? initial?.currency ?? null)
   const [categoryId, setCategoryId] = useState<string | null>(edit?.categoryId || null)
-  const [accountId, setAccountId] = useState<string | null>(edit?.accountId ?? null)
+  const [accountId, setAccountId] = useState<string | null>(edit?.accountId ?? initial?.accountId ?? null)
   const [toAccountId, setToAccountId] = useState<string | null>(edit?.toAccountId ?? null)
   const [date, setDate] = useState(edit?.date ?? initial?.date ?? todayISO())
   const [note, setNote] = useState(edit?.note ?? initial?.note ?? '')
@@ -67,6 +68,7 @@ export default function AddSheet({
   const [startsPeriod, setStartsPeriod] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [duplicate, setDuplicate] = useState<Txn | null>(null)
 
   // New-category mini form
   const [newCatOpen, setNewCatOpen] = useState(false)
@@ -105,6 +107,20 @@ export default function AddSheet({
       return setError('Pick a category')
     }
     setError('')
+
+    // Duplicate check: same type + amount within ±2 days (skip when editing
+    // or when the user already tapped "Add anyway")
+    if (!edit && !duplicate) {
+      const near = await db.txns
+        .where('date')
+        .between(addDaysISO(date, -2), addDaysISO(date, 2), true, true)
+        .filter(t => t.type === type && t.amountMinor === amountMinor && t.currency === activeCurrency)
+        .first()
+      if (near) {
+        setDuplicate(near)
+        return
+      }
+    }
     setSaving(true)
     try {
       const fields = {
@@ -176,7 +192,7 @@ export default function AddSheet({
           inputMode="decimal"
           placeholder="0.00"
           value={amount}
-          onChange={e => setAmount(e.target.value)}
+          onChange={e => { setAmount(e.target.value); setDuplicate(null) }}
           className="w-44 bg-transparent text-center text-5xl font-bold tabular-nums tracking-tight outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700"
         />
       </div>
@@ -280,7 +296,7 @@ export default function AddSheet({
             type="date"
             value={date}
             max={todayISO()}
-            onChange={e => setDate(e.target.value)}
+            onChange={e => { setDate(e.target.value); setDuplicate(null) }}
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
         </div>
@@ -347,14 +363,27 @@ export default function AddSheet({
         </p>
       )}
 
+      {duplicate && (
+        <div className="mb-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">⚠️ Possible duplicate</p>
+          <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+            A {duplicate.type} of {fmt(duplicate.amountMinor, duplicate.currency, { compactCents: true })} already exists on{' '}
+            {friendlyDate(duplicate.date)}
+            {duplicate.note && ` (“${duplicate.note}”)`}. Save anyway?
+          </p>
+        </div>
+      )}
+
       {error && <p className="mb-3 text-center text-sm font-medium text-rose-500">{error}</p>}
 
       <button
         onClick={save}
         disabled={saving}
-        className={`w-full rounded-2xl py-3.5 text-base font-bold text-white shadow-lg transition-transform active:scale-[0.98] disabled:opacity-50 ${meta.button}`}
+        className={`w-full rounded-2xl py-3.5 text-base font-bold text-white shadow-lg transition-transform active:scale-[0.98] disabled:opacity-50 ${
+          duplicate ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-500/30' : meta.button
+        }`}
       >
-        {saving ? 'Saving…' : edit ? 'Save changes' : meta.saveLabel}
+        {saving ? 'Saving…' : duplicate ? 'Add anyway' : edit ? 'Save changes' : meta.saveLabel}
       </button>
     </Sheet>
   )

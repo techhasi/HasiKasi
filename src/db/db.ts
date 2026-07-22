@@ -24,6 +24,8 @@ export interface Account {
   color: string
   /** opening balance in LKR minor units (cents) */
   openingMinor: number
+  /** last 3-4 digits of the card/account, used to auto-match SMS imports */
+  numberHint?: string
 }
 
 export interface Txn {
@@ -68,6 +70,47 @@ export interface Settings {
   carryOver: boolean
   /** manual LKR per 1 USD rate used to convert USD txns in totals */
   usdRate: number
+  /** cloud backup: private GitHub repo "owner/name" + fine-grained PAT */
+  backupRepo?: string
+  backupToken?: string
+  /** last day a daily cloud backup succeeded (ISO date) */
+  lastBackupDay?: string
+  /** startDate of the last budget cycle snapshotted to the cloud */
+  lastCycleBackup?: string
+}
+
+/** A repeating payment: subscription/bill, or a loan with payoff tracking. */
+export interface Recurring {
+  id: string
+  name: string
+  kind: 'subscription' | 'loan'
+  /** installment amount in minor units of `currency` */
+  amountMinor: number
+  currency: Currency
+  categoryId: string
+  accountId: string
+  /** 1-31, clamped to shorter months */
+  dayOfMonth: number
+  /** 1 = monthly, 3 = quarterly, 12 = yearly */
+  intervalMonths: number
+  /** next occurrence (ISO date) */
+  nextDue: string
+  note: string
+  /** loans: total to repay / repaid so far, minor units of `currency` */
+  principalMinor?: number
+  paidMinor?: number
+  createdAt: number
+}
+
+export interface Investment {
+  id: string
+  name: string
+  type: 'savings' | 'fd' | 'stocks' | 'crypto' | 'epf' | 'other'
+  /** current value in minor units of `currency` */
+  valueMinor: number
+  currency: Currency
+  note: string
+  updatedAt: number
 }
 
 /** A bank-SMS candidate awaiting user approval in the import inbox. */
@@ -91,6 +134,8 @@ export const db = new Dexie('budget-app') as Dexie & {
   periods: EntityTable<Period, 'id'>
   settings: EntityTable<Settings, 'id'>
   pending: EntityTable<PendingTxn, 'id'>
+  recurring: EntityTable<Recurring, 'id'>
+  investments: EntityTable<Investment, 'id'>
 }
 
 db.version(1).stores({
@@ -104,6 +149,11 @@ db.version(1).stores({
 
 db.version(2).stores({
   pending: 'id, createdAt'
+})
+
+db.version(3).stores({
+  recurring: 'id, nextDue',
+  investments: 'id'
 })
 
 export const uid = () => crypto.randomUUID()

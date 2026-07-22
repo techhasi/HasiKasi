@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, uid, DEFAULT_SETTINGS, type Account } from '../db/db'
+import { db, uid, DEFAULT_SETTINGS, type Account, type Investment, type Recurring } from '../db/db'
 import { fmt, toLKR, parseAmount } from '../lib/money'
+import { shortDate } from '../lib/dates'
 import Sheet from '../components/Sheet'
+import RecurringSheet from '../components/RecurringSheet'
+import InvestmentSheet, { INVESTMENT_TYPES } from '../components/InvestmentSheet'
 
 const ACCOUNT_TYPES = [
   { id: 'cash', label: 'Cash', emoji: '💵' },
@@ -16,7 +19,12 @@ export default function Accounts() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
   const txns = useLiveQuery(() => db.txns.toArray(), [], [])
-  const [adding, setAdding] = useState(false)
+  const recurring = useLiveQuery(() => db.recurring.orderBy('nextDue').toArray(), [], [])
+  const investments = useLiveQuery(() => db.investments.toArray(), [], [])
+
+  const [accountSheet, setAccountSheet] = useState<{ edit?: Account } | null>(null)
+  const [recurringSheet, setRecurringSheet] = useState<{ edit?: Recurring } | null>(null)
+  const [investmentSheet, setInvestmentSheet] = useState<{ edit?: Investment } | null>(null)
 
   const usdRate = settings?.usdRate ?? 300
 
@@ -35,70 +43,175 @@ export default function Accounts() {
     return map
   }, [accounts, txns, usdRate])
 
-  const total = [...balances.values()].reduce((s, v) => s + v, 0)
+  const accountsTotal = [...balances.values()].reduce((s, v) => s + v, 0)
+  const investedTotal = investments.reduce((s, i) => s + toLKR(i.valueMinor, i.currency, usdRate), 0)
 
   return (
     <div className="px-4 pt-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Accounts</h1>
-        <button
-          onClick={() => setAdding(true)}
-          className="rounded-xl bg-indigo-500 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/30"
-        >
-          + Add
-        </button>
-      </div>
+      <h1 className="mb-4 text-2xl font-bold tracking-tight">Accounts</h1>
 
+      {/* Net worth */}
       <div className="mb-5 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white shadow-xl dark:from-indigo-600 dark:to-purple-700">
         <p className="text-xs uppercase tracking-widest text-slate-300 dark:text-indigo-200">Net worth</p>
-        <p className="text-3xl font-bold tabular-nums">{fmt(total, 'LKR', { compactCents: true })}</p>
+        <p className="text-3xl font-bold tabular-nums">{fmt(accountsTotal + investedTotal, 'LKR', { compactCents: true })}</p>
+        {investedTotal > 0 && (
+          <p className="mt-1 text-xs text-slate-300 dark:text-indigo-200">
+            {fmt(accountsTotal, 'LKR', { compactCents: true })} in accounts · {fmt(investedTotal, 'LKR', { compactCents: true })} invested
+          </p>
+        )}
       </div>
 
-      <div className="space-y-3">
+      {/* Accounts */}
+      <SectionHeader title="Accounts" onAdd={() => setAccountSheet({})} />
+      <div className="mb-6 space-y-3">
         {accounts.map(a => {
           const bal = balances.get(a.id) ?? 0
           const t = ACCOUNT_TYPES.find(t => t.id === a.type)
           return (
-            <div key={a.id} className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-800/60">
+            <button
+              key={a.id}
+              onClick={() => setAccountSheet({ edit: a })}
+              className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50 dark:bg-slate-800/60 dark:active:bg-slate-700/40"
+            >
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl" style={{ backgroundColor: `${a.color}22` }}>
                 {t?.emoji}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{a.name}</p>
-                <p className="text-xs capitalize text-slate-400">{a.type}</p>
+                <p className="text-xs capitalize text-slate-400">
+                  {a.type}
+                  {a.numberHint && ` · •••${a.numberHint}`}
+                </p>
               </div>
               <p className={`text-base font-bold tabular-nums ${bal < 0 ? 'text-rose-500' : ''}`}>
                 {fmt(bal, 'LKR', { compactCents: true })}
               </p>
-            </div>
+            </button>
           )
         })}
       </div>
 
-      {adding && <AddAccountSheet onClose={() => setAdding(false)} />}
+      {/* Recurring payments */}
+      <SectionHeader title="Recurring & loans" onAdd={() => setRecurringSheet({})} />
+      {recurring.length === 0 ? (
+        <EmptyHint text="Add rent, subscriptions, or loan installments — they'll pop up on Home when due." />
+      ) : (
+        <div className="mb-6 space-y-3">
+          {recurring.map(r => {
+            const progress = r.kind === 'loan' && r.principalMinor ? Math.min(1, (r.paidMinor ?? 0) / r.principalMinor) : null
+            return (
+              <button
+                key={r.id}
+                onClick={() => setRecurringSheet({ edit: r })}
+                className="block w-full rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50 dark:bg-slate-800/60 dark:active:bg-slate-700/40"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500/10 text-lg">
+                    {r.kind === 'loan' ? '🏦' : '🔁'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{r.name}</p>
+                    <p className="text-xs text-slate-400">
+                      due {shortDate(r.nextDue)} · every {r.intervalMonths === 1 ? 'month' : `${r.intervalMonths} months`}
+                    </p>
+                  </div>
+                  <p className="text-sm font-bold tabular-nums">{fmt(r.amountMinor, r.currency, { compactCents: true })}</p>
+                </div>
+                {progress !== null && (
+                  <div className="mt-2.5 pl-[52px]">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                      <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.round(progress * 100)}%` }} />
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {fmt(r.paidMinor ?? 0, r.currency, { compactCents: true })} of {fmt(r.principalMinor!, r.currency, { compactCents: true })} paid
+                      {progress >= 1 && ' 🎉'}
+                    </p>
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Investments */}
+      <SectionHeader title="Investments & savings" onAdd={() => setInvestmentSheet({})} />
+      {investments.length === 0 ? (
+        <EmptyHint text="Track FDs, stocks, crypto, EPF and savings here — they count toward net worth." />
+      ) : (
+        <div className="mb-6 space-y-3">
+          {investments.map(i => {
+            const t = INVESTMENT_TYPES.find(t => t.id === i.type)
+            return (
+              <button
+                key={i.id}
+                onClick={() => setInvestmentSheet({ edit: i })}
+                className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50 dark:bg-slate-800/60 dark:active:bg-slate-700/40"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-xl">{t?.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{i.name}</p>
+                  <p className="text-xs text-slate-400">
+                    {t?.label}
+                    {i.note && ` · ${i.note}`}
+                  </p>
+                </div>
+                <p className="text-base font-bold tabular-nums">{fmt(i.valueMinor, i.currency, { compactCents: true })}</p>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {accountSheet && <AccountSheet edit={accountSheet.edit} onClose={() => setAccountSheet(null)} />}
+      {recurringSheet && <RecurringSheet edit={recurringSheet.edit} onClose={() => setRecurringSheet(null)} />}
+      {investmentSheet && <InvestmentSheet edit={investmentSheet.edit} onClose={() => setInvestmentSheet(null)} />}
     </div>
   )
 }
 
-function AddAccountSheet({ onClose }: { onClose: () => void }) {
-  const [name, setName] = useState('')
-  const [type, setType] = useState<Account['type']>('bank')
-  const [color, setColor] = useState(ACCOUNT_COLORS[1])
-  const [opening, setOpening] = useState('')
+function SectionHeader({ title, onAdd }: { title: string; onAdd: () => void }) {
+  return (
+    <div className="mb-2 flex items-center justify-between">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h2>
+      <button onClick={onAdd} className="rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/30">
+        + Add
+      </button>
+    </div>
+  )
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return (
+    <p className="mb-6 rounded-2xl border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400 dark:border-slate-700">
+      {text}
+    </p>
+  )
+}
+
+function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }) {
+  const [name, setName] = useState(edit?.name ?? '')
+  const [type, setType] = useState<Account['type']>(edit?.type ?? 'bank')
+  const [color, setColor] = useState(edit?.color ?? ACCOUNT_COLORS[1])
+  const [opening, setOpening] = useState(edit && edit.openingMinor ? (edit.openingMinor / 100).toFixed(2) : '')
+  const [numberHint, setNumberHint] = useState(edit?.numberHint ?? '')
   const [error, setError] = useState('')
 
   async function save() {
     if (!name.trim()) return setError('Enter a name')
     const openingMinor = opening.trim() ? parseAmount(opening) : 0
     if (openingMinor === null) return setError('Invalid opening balance')
-    await db.accounts.add({ id: uid(), name: name.trim(), type, color, openingMinor })
+    const hint = numberHint.replace(/\D/g, '').slice(-4)
+    const fields = { name: name.trim(), type, color, openingMinor, numberHint: hint || undefined }
+    if (edit) await db.accounts.update(edit.id, fields)
+    else await db.accounts.add({ id: uid(), ...fields })
     onClose()
   }
 
   return (
-    <Sheet onClose={onClose} title="New account">
+    <Sheet onClose={onClose} title={edit ? 'Edit account' : 'New account'}>
       <input
-        autoFocus
+        autoFocus={!edit}
         placeholder="Account name (e.g. HNB Savings)"
         value={name}
         onChange={e => setName(e.target.value)}
@@ -132,11 +245,21 @@ function AddAccountSheet({ onClose }: { onClose: () => void }) {
         inputMode="decimal"
         value={opening}
         onChange={e => setOpening(e.target.value)}
-        className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+        className="mb-3 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
       />
+      <input
+        placeholder="Card/account last 4 digits (for SMS matching)"
+        inputMode="numeric"
+        value={numberHint}
+        onChange={e => setNumberHint(e.target.value)}
+        className="mb-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+      />
+      <p className="mb-4 text-xs text-slate-400">
+        SMS imports mentioning these digits will pick this account automatically.
+      </p>
       {error && <p className="mb-3 text-center text-sm font-medium text-rose-500">{error}</p>}
       <button onClick={save} className="w-full rounded-2xl bg-indigo-500 py-3.5 font-bold text-white shadow-lg shadow-indigo-500/30">
-        Add account
+        {edit ? 'Save changes' : 'Add account'}
       </button>
     </Sheet>
   )

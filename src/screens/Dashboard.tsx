@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Txn } from '../db/db'
 import { computeTotals, txnsInPeriod } from '../lib/periods'
+import { logRecurring, skipRecurring } from '../lib/recurring'
 import { fmt, toLKR } from '../lib/money'
-import { friendlyDate, periodLabel } from '../lib/dates'
+import { friendlyDate, periodLabel, todayISO } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
 import SmsImport from '../components/SmsImport'
 import SearchSheet from '../components/SearchSheet'
@@ -15,6 +16,7 @@ export default function Dashboard() {
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
   const pendingCount = useLiveQuery(() => db.pending.count(), [], 0)
+  const due = useLiveQuery(() => db.recurring.where('nextDue').belowOrEqual(todayISO()).toArray(), [], [])
 
   // Period navigation: index into periods array, default = active (last)
   const [periodOffset, setPeriodOffset] = useState(0) // 0 = latest
@@ -142,6 +144,40 @@ export default function Dashboard() {
           </p>
         )}
       </section>
+
+      {/* Due recurring payments */}
+      {due.length > 0 && (
+        <section className="mt-6">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Due payments
+          </h2>
+          <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10">
+            {due.map(r => (
+              <div key={r.id} className="flex items-center gap-3 border-b border-amber-200/60 px-4 py-3 last:border-0 dark:border-amber-500/10">
+                <span className="text-lg">{r.kind === 'loan' ? '🏦' : '🔁'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{r.name}</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {fmt(r.amountMinor, r.currency, { compactCents: true })} · due {friendlyDate(r.nextDue).toLowerCase()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => skipRecurring(r)}
+                  className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-sm dark:bg-slate-800"
+                >
+                  Skip
+                </button>
+                <button
+                  onClick={() => logRecurring(r)}
+                  className="rounded-xl bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/30"
+                >
+                  Log ✓
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Budgets */}
       {budgets.length > 0 && (

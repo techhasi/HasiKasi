@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, initDb, DEFAULT_SETTINGS } from './db/db'
+import { autoBackup } from './lib/cloudBackup'
 import Dashboard from './screens/Dashboard'
 import Stats from './screens/Stats'
 import Accounts from './screens/Accounts'
@@ -22,7 +23,11 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false)
 
   useEffect(() => {
-    initDb().then(() => setReady(true))
+    initDb().then(() => {
+      setReady(true)
+      // Daily/cycle cloud backup, silently in the background
+      autoBackup().catch(e => console.warn('cloud backup failed:', e))
+    })
   }, [])
 
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)

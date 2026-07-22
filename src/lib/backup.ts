@@ -10,12 +10,16 @@ interface BackupFile {
   accounts: unknown[]
   periods: unknown[]
   settings: unknown[]
+  recurring?: unknown[]
+  investments?: unknown[]
   receipts: { txnId: string; dataUrl: string }[]
 }
 
-export async function exportBackup(): Promise<void> {
+export async function buildBackup(): Promise<BackupFile> {
   const receipts = await db.receipts.toArray()
-  const backup: BackupFile = {
+  // The cloud token is deliberately excluded so backups never contain it
+  const settings = (await db.settings.toArray()).map(s => ({ ...s, backupToken: undefined }))
+  return {
     app: 'budgeting-app',
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -23,11 +27,17 @@ export async function exportBackup(): Promise<void> {
     categories: await db.categories.toArray(),
     accounts: await db.accounts.toArray(),
     periods: await db.periods.toArray(),
-    settings: await db.settings.toArray(),
+    settings,
+    recurring: await db.recurring.toArray(),
+    investments: await db.investments.toArray(),
     receipts: await Promise.all(
       receipts.map(async r => ({ txnId: r.txnId, dataUrl: await blobToDataURL(r.blob) }))
     )
   }
+}
+
+export async function exportBackup(): Promise<void> {
+  const backup = await buildBackup()
   const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -43,16 +53,23 @@ export async function importBackup(file: File): Promise<void> {
   const receipts = await Promise.all(
     backup.receipts.map(async r => ({ txnId: r.txnId, blob: await dataURLToBlob(r.dataUrl) }))
   )
-  await db.transaction('rw', [db.txns, db.categories, db.accounts, db.periods, db.settings, db.receipts], async () => {
-    await Promise.all([
-      db.txns.clear(), db.categories.clear(), db.accounts.clear(),
-      db.periods.clear(), db.settings.clear(), db.receipts.clear()
-    ])
-    await db.txns.bulkAdd(backup.txns as never[])
-    await db.categories.bulkAdd(backup.categories as never[])
-    await db.accounts.bulkAdd(backup.accounts as never[])
-    await db.periods.bulkAdd(backup.periods as never[])
-    await db.settings.bulkAdd(backup.settings as never[])
-    await db.receipts.bulkAdd(receipts)
-  })
+  await db.transaction(
+    'rw',
+    [db.txns, db.categories, db.accounts, db.periods, db.settings, db.receipts, db.recurring, db.investments],
+    async () => {
+      await Promise.all([
+        db.txns.clear(), db.categories.clear(), db.accounts.clear(),
+        db.periods.clear(), db.settings.clear(), db.receipts.clear(),
+        db.recurring.clear(), db.investments.clear()
+      ])
+      await db.txns.bulkAdd(backup.txns as never[])
+      await db.categories.bulkAdd(backup.categories as never[])
+      await db.accounts.bulkAdd(backup.accounts as never[])
+      await db.periods.bulkAdd(backup.periods as never[])
+      await db.settings.bulkAdd(backup.settings as never[])
+      if (backup.recurring) await db.recurring.bulkAdd(backup.recurring as never[])
+      if (backup.investments) await db.investments.bulkAdd(backup.investments as never[])
+      await db.receipts.bulkAdd(receipts)
+    }
+  )
 }

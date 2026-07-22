@@ -9,17 +9,29 @@ import AddSheet from './AddSheet'
 
 export default function SmsImport({ onClose }: { onClose: () => void }) {
   const pending = useLiveQuery(() => db.pending.orderBy('createdAt').reverse().toArray(), [], [])
+  const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
   const [text, setText] = useState('')
   const [info, setInfo] = useState('')
   const [adding, setAdding] = useState<PendingTxn | null>(null)
 
-  async function parse() {
-    const results = parseSms(text)
+  /** Match an SMS account hint (last digits) to a configured account. */
+  function matchAccount(hint: string | null): string | undefined {
+    if (!hint) return undefined
+    return accounts.find(a => a.numberHint && (a.numberHint === hint || a.numberHint.endsWith(hint) || hint.endsWith(a.numberHint)))?.id
+  }
+
+  async function parse(input?: string) {
+    const source = input ?? text
+    const results = parseSms(source)
     const ok = results.filter(r => r.amountMinor !== null)
     const skipped = results.length - ok.length
-    if (ok.length) {
+    // Don't queue the exact same message twice
+    const seen = new Set((await db.pending.toArray()).map(p => p.raw))
+    const fresh = ok.filter(r => !seen.has(r.raw))
+    const dups = ok.length - fresh.length
+    if (fresh.length) {
       await db.pending.bulkAdd(
-        ok.map(r => ({
+        fresh.map(r => ({
           id: uid(),
           raw: r.raw,
           type: r.type,
@@ -32,12 +44,23 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
         }))
       )
     }
-    setInfo(
-      ok.length === 0
-        ? '❌ No amounts found — is this a bank message?'
-        : `✅ Found ${ok.length} transaction${ok.length > 1 ? 's' : ''}${skipped ? ` (${skipped} skipped, no amount)` : ''}`
-    )
-    if (ok.length) setText('')
+    const parts: string[] = []
+    if (fresh.length) parts.push(`✅ ${fresh.length} found`)
+    if (dups) parts.push(`${dups} already in inbox`)
+    if (skipped) parts.push(`${skipped} skipped (no amount)`)
+    setInfo(parts.length ? parts.join(' · ') : '❌ No amounts found — is this a bank message?')
+    if (fresh.length) setText('')
+  }
+
+  async function pasteAndScan() {
+    try {
+      const clip = await navigator.clipboard.readText()
+      if (!clip.trim()) return setInfo('Clipboard is empty')
+      setText(clip)
+      await parse(clip)
+    } catch {
+      setInfo('Clipboard not available — paste manually into the box')
+    }
   }
 
   return (
@@ -54,14 +77,39 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
         placeholder={'Paste bank SMS here…\n\ne.g. Purchase at KEELLS for LKR 4,500.00 on 21/07/26 with card ending 1234'}
         className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
       />
-      <button
-        onClick={parse}
-        disabled={!text.trim()}
-        className="mb-2 w-full rounded-2xl bg-indigo-500 py-3 font-bold text-white shadow-lg shadow-indigo-500/30 disabled:opacity-40"
-      >
-        Scan for transactions
-      </button>
+      <div className="mb-2 flex gap-2">
+        <button
+          onClick={pasteAndScan}
+          className="flex-1 rounded-2xl bg-slate-200 py-3 text-sm font-bold dark:bg-slate-700"
+        >
+          📋 Paste & scan
+        </button>
+        <button
+          onClick={() => parse()}
+          disabled={!text.trim()}
+          className="flex-1 rounded-2xl bg-indigo-500 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 disabled:opacity-40"
+        >
+          Scan box
+        </button>
+      </div>
       {info && <p className="mb-3 text-center text-sm font-medium">{info}</p>}
+
+      <details className="mb-3 rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/60">
+        <summary className="cursor-pointer text-xs font-semibold text-slate-500 dark:text-slate-400">
+          ⚡ Make it automatic with a Shortcut
+        </summary>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+          <li><b>Shortcuts</b> app → <b>Automation</b> → <b>+</b> → <b>Message</b></li>
+          <li>Set <b>Sender</b> to your bank's SMS name → Run Immediately → Next</li>
+          <li>Add action <b>Copy to Clipboard</b> with the variable <b>Shortcut Input</b></li>
+          <li>Optionally add <b>Show Notification</b>: “Bank SMS copied — open HasiKasi”</li>
+          <li>Next time you open this screen, just tap <b>Paste &amp; scan</b></li>
+        </ol>
+        <p className="mt-2 text-xs text-slate-400">
+          Tip: set the last 4 digits on each account (Accounts → tap an account) and imports will pick the right
+          account automatically.
+        </p>
+      </details>
 
       {pending.length > 0 && (
         <>
@@ -89,8 +137,15 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
                   </span>
                   <span className="flex-1 truncate text-xs text-slate-400">{friendlyDate(p.date)}</span>
                   {p.accountHint && (
-                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        matchAccount(p.accountHint)
+                          ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+                          : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                      }`}
+                    >
                       •••{p.accountHint}
+                      {matchAccount(p.accountHint) && ` = ${accounts.find(a => a.id === matchAccount(p.accountHint))?.name}`}
                     </span>
                   )}
                 </div>
@@ -133,7 +188,8 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
             amount: (adding.amountMinor / 100).toFixed(2),
             currency: adding.currency,
             date: adding.date,
-            note: adding.merchant
+            note: adding.merchant,
+            accountId: matchAccount(adding.accountHint)
           }}
           onSaved={() => db.pending.delete(adding.id)}
           onClose={() => setAdding(null)}

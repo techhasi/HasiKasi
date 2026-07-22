@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Settings } from '../db/db'
 import { exportBackup, importBackup } from '../lib/backup'
+import { autoBackup } from '../lib/cloudBackup'
 
 export default function SettingsScreen() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
@@ -105,6 +106,63 @@ export default function SettingsScreen() {
             ⚠️ Always open the app from your <b>home-screen icon</b> — Safari keeps separate storage, so
             transactions logged in a Safari tab won't appear here.
           </p>
+        </div>
+      </Section>
+
+      <Section title="Cloud backup">
+        <div className="px-4 py-3.5">
+          <p className="mb-1 text-sm font-medium">Automatic off-phone backups</p>
+          <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Backs up to a <b>private</b> GitHub repo you own: one daily backup kept up to date, plus a snapshot each
+            budget cycle. Runs automatically when you open the app.
+          </p>
+          <input
+            placeholder="Repo (e.g. techhasi/hasikasi-backups)"
+            defaultValue={settings.backupRepo ?? ''}
+            onBlur={e => update({ backupRepo: e.target.value.trim() || undefined })}
+            className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+          <input
+            type="password"
+            placeholder="Fine-grained token (Contents: read/write)"
+            defaultValue={settings.backupToken ?? ''}
+            onBlur={e => update({ backupToken: e.target.value.trim() || undefined })}
+            className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-400">
+              {settings.lastBackupDay ? `Last backup: ${settings.lastBackupDay}` : 'Not backed up yet'}
+            </p>
+            <button
+              onClick={async () => {
+                setMessage('⏳ Backing up…')
+                try {
+                  setMessage((await autoBackup(true)) ?? 'Nothing to back up')
+                } catch (e) {
+                  setMessage(`❌ ${e instanceof Error ? e.message : 'Backup failed'}`)
+                }
+              }}
+              className="shrink-0 rounded-xl bg-indigo-500 px-3.5 py-2 text-sm font-semibold text-white"
+            >
+              Back up now
+            </button>
+          </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-500 dark:text-slate-400">
+              One-time setup guide
+            </summary>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              <li>On GitHub create a <b>private</b> repo, e.g. <b>hasikasi-backups</b> (initialize with a README)</li>
+              <li>
+                GitHub → Settings → Developer settings → <b>Fine-grained tokens</b> → Generate: repository access ={' '}
+                <b>only that repo</b>, permission <b>Contents: Read and write</b>, long expiration
+              </li>
+              <li>Paste repo and token above, then tap <b>Back up now</b> to test</li>
+            </ol>
+            <p className="mt-1.5 text-xs text-slate-400">
+              The token is stored only on this device and is never included inside backup files.
+            </p>
+          </details>
         </div>
       </Section>
 

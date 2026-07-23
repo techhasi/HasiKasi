@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Settings } from '../db/db'
 import { exportBackup, importBackup } from '../lib/backup'
-import { autoBackup } from '../lib/cloudBackup'
+import { autoBackup, normalizeRepo } from '../lib/cloudBackup'
 import { lockSupported, enrollLock, verifyLock } from '../lib/appLock'
 import GuideSheet from '../components/GuideSheet'
 
@@ -159,7 +159,7 @@ export default function SettingsScreen() {
           <input
             placeholder="Repo (e.g. techhasi/hasikasi-backups)"
             defaultValue={settings.backupRepo ?? ''}
-            onBlur={e => update({ backupRepo: e.target.value.trim() || undefined })}
+            onBlur={e => update({ backupRepo: normalizeRepo(e.target.value) || undefined })}
             className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
           <input

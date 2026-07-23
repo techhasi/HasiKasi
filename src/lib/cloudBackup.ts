@@ -9,6 +9,15 @@ async function toBase64(text: string): Promise<string> {
   return dataUrl.split(',')[1]
 }
 
+/** Accept "owner/repo" or a pasted GitHub URL and return "owner/repo". */
+export function normalizeRepo(input: string): string {
+  return input
+    .trim()
+    .replace(/^https?:\/\/(www\.)?github\.com\//i, '')
+    .replace(/\.git$/i, '')
+    .replace(/^\/+|\/+$/g, '')
+}
+
 async function uploadToGitHub(repo: string, token: string, path: string, jsonText: string): Promise<void> {
   const api = `https://api.github.com/repos/${repo}/contents/${path}`
   const headers = {
@@ -45,6 +54,8 @@ async function uploadToGitHub(repo: string, token: string, path: string, jsonTex
 export async function autoBackup(force = false): Promise<string | null> {
   const s = await getSettings()
   if (!s.backupRepo || !s.backupToken) return force ? 'Set the repo and token first' : null
+  const repo = normalizeRepo(s.backupRepo)
+  const token = s.backupToken.trim()
 
   const today = todayISO()
   const active = await getActivePeriod()
@@ -55,12 +66,12 @@ export async function autoBackup(force = false): Promise<string | null> {
   const json = JSON.stringify(await buildBackup())
   const done: string[] = []
   if (needDaily) {
-    await uploadToGitHub(s.backupRepo, s.backupToken, 'hasikasi-latest.json', json)
+    await uploadToGitHub(repo, token, 'hasikasi-latest.json', json)
     await db.settings.update('app', { lastBackupDay: today })
     done.push('daily')
   }
   if (needCycle && active) {
-    await uploadToGitHub(s.backupRepo, s.backupToken, `hasikasi-cycle-${active.startDate}.json`, json)
+    await uploadToGitHub(repo, token, `hasikasi-cycle-${active.startDate}.json`, json)
     await db.settings.update('app', { lastCycleBackup: active.startDate })
     done.push('cycle snapshot')
   }

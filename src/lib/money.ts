@@ -13,12 +13,18 @@ export function fmt(minor: number, currency: Currency = 'LKR', opts?: { compactC
   return `${sign}${CURRENCY_SYMBOL[currency]} ${majorStr}${centsStr}`
 }
 
-/** Parse a user-typed decimal string into minor units. Returns null when invalid. */
-export function parseAmount(input: string): number | null {
+/**
+ * Parse a user-typed decimal string into minor units. Returns null when invalid.
+ * Zero is rejected by default (transactions need positive amounts); pass
+ * `allowZero` for fields like opening balances where 0 is legitimate.
+ */
+export function parseAmount(input: string, opts?: { allowZero?: boolean }): number | null {
   const cleaned = input.replace(/[,\s]/g, '')
   if (!/^\d+(\.\d{0,2})?$/.test(cleaned)) return null
   const n = Math.round(parseFloat(cleaned) * 100)
-  return Number.isFinite(n) && n > 0 ? n : null
+  if (!Number.isFinite(n) || n < 0) return null
+  if (n === 0 && !opts?.allowZero) return null
+  return n
 }
 
 /** Convert a txn amount to LKR minor units using the manual USD rate. */

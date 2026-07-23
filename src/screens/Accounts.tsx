@@ -193,14 +193,15 @@ function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }
 
   async function save() {
     if (!name.trim()) return setError('Enter a name')
-    const openingMinor = opening.trim() ? parseAmount(opening) : 0
+    const openingMinor = opening.trim() ? parseAmount(opening, { allowZero: true }) : 0
     if (openingMinor === null) return setError('Invalid opening balance')
     const hint = numberHint.replace(/\D/g, '').slice(-4)
     const fields: Partial<Account> = { name: name.trim(), type, color, openingMinor, numberHint: hint || undefined }
     if (type === 'card') {
-      const statementMinor = statement.trim() ? parseAmount(statement) : undefined
-      if (statement.trim() && !statementMinor) return setError('Invalid due amount')
-      fields.statementMinor = statementMinor ?? undefined
+      // 0 clears the statement (nothing due)
+      const statementMinor = statement.trim() ? parseAmount(statement, { allowZero: true }) : undefined
+      if (statement.trim() && statementMinor === null) return setError('Invalid due amount')
+      fields.statementMinor = statementMinor || undefined
       // A newly entered statement means a new billing cycle — show the reminder again
       if (statementMinor && statementMinor !== edit?.statementMinor) fields.lastPaidMonth = undefined
     }

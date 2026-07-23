@@ -235,7 +235,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
       if (statementMinor && statementMinor !== edit?.statementMinor) fields.lastPaidMonth = undefined
       const limitMinor = creditLimit.trim() ? parseAmount(creditLimit) : undefined
       if (creditLimit.trim() && !limitMinor) return setError('Invalid credit limit')
-      fields.creditLimitMinor = limitMinor
+      fields.creditLimitMinor = limitMinor ?? undefined
     } else {
       fields.statementMinor = undefined
       fields.creditLimitMinor = undefined

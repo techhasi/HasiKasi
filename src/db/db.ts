@@ -167,7 +167,10 @@ export const DEFAULT_SETTINGS: Settings = {
   currency: 'LKR',
   theme: 'dark',
   carryOver: true,
-  usdRate: 300
+  usdRate: 300,
+  // Default backup destination; the token is entered once per install in
+  // Settings and lives only in IndexedDB (never in code — the repo is public).
+  backupRepo: 'techhasi/hasikasi-backups'
 }
 
 const DEFAULT_EXPENSE_CATEGORIES: Omit<Category, 'id'>[] = [
@@ -193,8 +196,11 @@ const DEFAULT_INCOME_CATEGORIES: Omit<Category, 'id'>[] = [
 /** Seed defaults on first run; safe to call every launch. */
 export async function initDb() {
   await db.transaction('rw', [db.categories, db.accounts, db.settings, db.periods], async () => {
-    if ((await db.settings.count()) === 0) {
+    const existing = await db.settings.get('app')
+    if (!existing) {
       await db.settings.add(DEFAULT_SETTINGS)
+    } else if (!existing.backupRepo) {
+      await db.settings.update('app', { backupRepo: DEFAULT_SETTINGS.backupRepo })
     }
     if ((await db.categories.count()) === 0) {
       await db.categories.bulkAdd(

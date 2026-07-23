@@ -17,8 +17,14 @@ interface BackupFile {
 
 export async function buildBackup(): Promise<BackupFile> {
   const receipts = await db.receipts.toArray()
-  // The cloud token is deliberately excluded so backups never contain it
-  const settings = (await db.settings.toArray()).map(s => ({ ...s, backupToken: undefined }))
+  // Device-specific secrets are excluded: the cloud token (sensitive) and the
+  // Face ID lock (its credential wouldn't exist on a restore target device)
+  const settings = (await db.settings.toArray()).map(s => ({
+    ...s,
+    backupToken: undefined,
+    lockEnabled: undefined,
+    lockCredentialId: undefined
+  }))
   return {
     app: 'budgeting-app',
     version: 1,

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, initDb, DEFAULT_SETTINGS } from './db/db'
+import { db, initDb, getSettings, DEFAULT_SETTINGS } from './db/db'
 import { autoBackup } from './lib/cloudBackup'
+import LockScreen from './components/LockScreen'
 import Dashboard from './screens/Dashboard'
 import Stats from './screens/Stats'
 import Accounts from './screens/Accounts'
@@ -21,13 +22,41 @@ export default function App() {
   const [ready, setReady] = useState(false)
   const [tab, setTab] = useState<Tab>('home')
   const [addOpen, setAddOpen] = useState(false)
+  const [locked, setLocked] = useState(false)
+  const [lockCredentialId, setLockCredentialId] = useState<string | null>(null)
 
   useEffect(() => {
-    initDb().then(() => {
+    initDb().then(async () => {
+      // Decide the lock state before first paint so content never flashes
+      const s = await getSettings()
+      if (s.lockEnabled && s.lockCredentialId) {
+        setLockCredentialId(s.lockCredentialId)
+        setLocked(true)
+      }
       setReady(true)
       // Daily/cycle cloud backup, silently in the background
       autoBackup().catch(e => console.warn('cloud backup failed:', e))
     })
+  }, [])
+
+  // Re-lock after the app has been in the background for over a minute
+  useEffect(() => {
+    let hiddenAt = 0
+    const onVisibility = async () => {
+      if (document.hidden) {
+        hiddenAt = Date.now()
+        return
+      }
+      if (hiddenAt && Date.now() - hiddenAt > 60_000) {
+        const s = await getSettings()
+        if (s.lockEnabled && s.lockCredentialId) {
+          setLockCredentialId(s.lockCredentialId)
+          setLocked(true)
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [])
 
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
@@ -48,6 +77,10 @@ export default function App() {
   }, [settings?.theme, settings])
 
   if (!ready) return null
+
+  if (locked && lockCredentialId) {
+    return <LockScreen credentialId={lockCredentialId} onUnlock={() => setLocked(false)} />
+  }
 
   return (
     <div className="mx-auto max-w-lg min-h-dvh pb-28">

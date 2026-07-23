@@ -81,6 +81,9 @@ export interface Settings {
   lastBackupDay?: string
   /** startDate of the last budget cycle snapshotted to the cloud */
   lastCycleBackup?: string
+  /** Face ID app lock (WebAuthn platform credential), device-specific */
+  lockEnabled?: boolean
+  lockCredentialId?: string
 }
 
 /** A repeating payment: subscription/bill, or a loan with payoff tracking. */

@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Settings } from '../db/db'
 import { exportBackup, importBackup } from '../lib/backup'
 import { autoBackup } from '../lib/cloudBackup'
+import { lockSupported, enrollLock, verifyLock } from '../lib/appLock'
 import GuideSheet from '../components/GuideSheet'
 
 export default function SettingsScreen() {
@@ -55,6 +56,35 @@ export default function SettingsScreen() {
         </Row>
         <Row label="Carry over balance" hint="Roll leftover money into the next budget month">
           <Toggle checked={settings.carryOver} onChange={v => update({ carryOver: v })} />
+        </Row>
+        <Row label="App lock" hint="Require Face ID when opening the app">
+          <Toggle
+            checked={!!settings.lockEnabled}
+            onChange={async on => {
+              if (on) {
+                if (!lockSupported()) return setMessage('❌ Face ID / passkeys not available on this device')
+                try {
+                  const id = await enrollLock()
+                  await update({ lockEnabled: true, lockCredentialId: id })
+                  setMessage('✅ App lock enabled')
+                } catch (e) {
+                  setMessage(`❌ ${e instanceof Error ? e.message : 'Face ID setup failed'}`)
+                }
+              } else {
+                // Turning the lock off requires passing it first
+                try {
+                  if (settings.lockCredentialId && (await verifyLock(settings.lockCredentialId))) {
+                    await update({ lockEnabled: false, lockCredentialId: undefined })
+                    setMessage('App lock disabled')
+                  } else {
+                    setMessage('❌ Authentication failed')
+                  }
+                } catch {
+                  setMessage('❌ Authentication failed')
+                }
+              }
+            }}
+          />
         </Row>
         <Row label="USD rate" hint="LKR per 1 USD, used for totals">
           <input

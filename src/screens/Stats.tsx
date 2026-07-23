@@ -25,7 +25,7 @@ export default function Stats() {
     const catById = new Map(categories.map(c => [c.id, c]))
     const byCat = new Map<string, number>()
     for (const t of txnsInPeriod(txns, period)) {
-      if (t.type !== kind) continue
+      if (t.type !== kind || t.adjustment) continue
       byCat.set(t.categoryId, (byCat.get(t.categoryId) ?? 0) + toLKR(t.amountMinor, t.currency, usdRate))
     }
     return [...byCat.entries()]

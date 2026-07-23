@@ -49,6 +49,8 @@ export interface Txn {
   note: string
   /** income only: this txn (salary) started a new budget period */
   startsPeriod?: boolean
+  /** balance correction: affects account balances but not spending/earning totals */
+  adjustment?: boolean
   createdAt: number
 }
 
@@ -130,6 +132,9 @@ export interface PendingTxn {
   date: string
   merchant: string
   accountHint: string | null
+  /** bank-stated available balance from the SMS, for reconciliation */
+  balanceMinor?: number
+  balanceCurrency?: Currency
   createdAt: number
 }
 

@@ -1,5 +1,22 @@
-import type { Account, Txn } from '../db/db'
+import { db, uid, type Account, type Txn } from '../db/db'
 import { toLKR } from './money'
+import { todayISO } from './dates'
+
+/** Log a balance correction: fixes the account balance without touching budget totals. */
+export async function addAdjustment(accountId: string, diffMinor: number, note: string, date = todayISO()): Promise<void> {
+  await db.txns.add({
+    id: uid(),
+    type: diffMinor > 0 ? 'income' : 'expense',
+    amountMinor: Math.abs(diffMinor),
+    currency: 'LKR',
+    categoryId: '',
+    accountId,
+    date,
+    note,
+    adjustment: true,
+    createdAt: Date.now()
+  })
+}
 
 /** Per-account balances in LKR minor units (opening + income − expenses ± transfers). */
 export function computeBalances(accounts: Account[], txns: Txn[], usdRate: number): Map<string, number> {

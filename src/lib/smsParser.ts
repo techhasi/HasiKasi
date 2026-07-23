@@ -10,6 +10,9 @@ export interface ParsedSms {
   date: string
   merchant: string
   accountHint: string | null
+  /** bank-stated available balance, when present ("Avl Bal LKR 50,000.00") */
+  balanceMinor: number | null
+  balanceCurrency: Currency
 }
 
 const EXPENSE_WORDS = ['debit', 'purchase', 'spent', 'withdraw', 'payment', 'paid', 'charged', 'pos ', 'bill', 'transfer to']
@@ -39,16 +42,35 @@ function parseDate(text: string): string | null {
   return null
 }
 
+const AMOUNT_RE = /(LKR|SLR|Rs\.?|USD|\$)\s*([\d,]+(?:\.\d{1,2})?)/gi
+
+function isBalanceContext(text: string, index: number): boolean {
+  const before = text.slice(Math.max(0, index - 18), index).toLowerCase()
+  return /\b(bal|balance|avl|available|limit)\b/.test(before)
+}
+
 /** Find the transaction amount, skipping balance figures ("Avl Bal LKR ..."). */
 function parseAmountAndCurrency(text: string): { amountMinor: number; currency: Currency } | null {
-  const re = /(LKR|SLR|Rs\.?|USD|\$)\s*([\d,]+(?:\.\d{1,2})?)/gi
-  for (const m of text.matchAll(re)) {
-    const before = text.slice(Math.max(0, m.index - 18), m.index).toLowerCase()
-    if (/\b(bal|balance|avl|available|limit)\b/.test(before)) continue
+  for (const m of text.matchAll(AMOUNT_RE)) {
+    if (isBalanceContext(text, m.index)) continue
     const n = parseFloat(m[2].replace(/,/g, ''))
     if (!Number.isFinite(n) || n <= 0) continue
     const cur = /usd|\$/i.test(m[1]) ? 'USD' : 'LKR'
     return { amountMinor: Math.round(n * 100), currency: cur }
+  }
+  return null
+}
+
+/** Find the bank-stated available balance (the amounts the txn parser skips). */
+function parseBalance(text: string): { balanceMinor: number; currency: Currency } | null {
+  for (const m of text.matchAll(AMOUNT_RE)) {
+    if (!isBalanceContext(text, m.index)) continue
+    // "limit" is a credit limit, not a balance
+    const before = text.slice(Math.max(0, m.index - 18), m.index).toLowerCase()
+    if (/\blimit\b/.test(before)) continue
+    const n = parseFloat(m[2].replace(/,/g, ''))
+    if (!Number.isFinite(n) || n < 0) continue
+    return { balanceMinor: Math.round(n * 100), currency: /usd|\$/i.test(m[1]) ? 'USD' : 'LKR' }
   }
   return null
 }
@@ -96,6 +118,7 @@ function parseAccountHint(text: string): string | null {
 
 function parseOne(raw: string): ParsedSms {
   const amt = parseAmountAndCurrency(raw)
+  const bal = parseBalance(raw)
   return {
     raw,
     type: parseType(raw),
@@ -103,7 +126,9 @@ function parseOne(raw: string): ParsedSms {
     currency: amt?.currency ?? 'LKR',
     date: parseDate(raw) ?? todayISO(),
     merchant: parseMerchant(raw),
-    accountHint: parseAccountHint(raw)
+    accountHint: parseAccountHint(raw),
+    balanceMinor: bal?.balanceMinor ?? null,
+    balanceCurrency: bal?.currency ?? 'LKR'
   }
 }
 

@@ -121,6 +121,7 @@ export default function SearchSheet({ onClose }: { onClose: () => void }) {
         )}
         {results.slice(0, 100).map(t => {
           const isTransfer = t.type === 'transfer'
+          const isAdjustment = !!t.adjustment
           const cat = catById.get(t.categoryId)
           const acc = accById.get(t.accountId)
           const toAcc = t.toAccountId ? accById.get(t.toAccountId) : undefined
@@ -132,13 +133,13 @@ export default function SearchSheet({ onClose }: { onClose: () => void }) {
             >
               <span
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
-                style={{ backgroundColor: isTransfer ? '#0ea5e922' : `${cat?.color ?? '#64748b'}22` }}
+                style={{ backgroundColor: isTransfer || isAdjustment ? '#0ea5e922' : `${cat?.color ?? '#64748b'}22` }}
               >
-                {isTransfer ? '⇄' : (cat?.emoji ?? '❓')}
+                {isAdjustment ? '⚖️' : isTransfer ? '⇄' : (cat?.emoji ?? '❓')}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">
-                  {isTransfer ? 'Transfer' : (cat?.name ?? 'Unknown')}
+                  {isAdjustment ? 'Adjustment' : isTransfer ? 'Transfer' : (cat?.name ?? 'Unknown')}
                 </span>
                 <span className="block truncate text-xs text-slate-400">
                   {friendlyDate(t.date)} · {isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name}

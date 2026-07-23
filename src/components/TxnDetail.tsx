@@ -19,6 +19,7 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
   const [editing, setEditing] = useState(false)
 
   const isTransfer = txn.type === 'transfer'
+  const isAdjustment = !!txn.adjustment
 
   useEffect(() => {
     if (!receipt) return
@@ -40,11 +41,11 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
       <div className="mb-4 flex flex-col items-center">
         <span
           className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl text-2xl"
-          style={{ backgroundColor: isTransfer ? '#0ea5e922' : `${category?.color ?? '#64748b'}22` }}
+          style={{ backgroundColor: isTransfer || isAdjustment ? '#0ea5e922' : `${category?.color ?? '#64748b'}22` }}
         >
-          {isTransfer ? '⇄' : (category?.emoji ?? '❓')}
+          {isAdjustment ? '⚖️' : isTransfer ? '⇄' : (category?.emoji ?? '❓')}
         </span>
-        <p className="text-sm text-slate-500">{isTransfer ? 'Transfer' : category?.name}</p>
+        <p className="text-sm text-slate-500">{isAdjustment ? 'Balance adjustment' : isTransfer ? 'Transfer' : category?.name}</p>
         <p
           className={`text-3xl font-bold tabular-nums ${
             isTransfer ? 'text-sky-500' : txn.type === 'expense' ? 'text-rose-500' : 'text-emerald-500'
@@ -85,12 +86,15 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
         </div>
       ) : (
         <div className="flex gap-3">
-          <button
-            onClick={() => setEditing(true)}
-            className="flex-1 rounded-2xl bg-indigo-500 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30"
-          >
-            ✏️ Edit
-          </button>
+          {/* Adjustments are corrections — delete and redo rather than edit */}
+          {!isAdjustment && (
+            <button
+              onClick={() => setEditing(true)}
+              className="flex-1 rounded-2xl bg-indigo-500 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30"
+            >
+              ✏️ Edit
+            </button>
+          )}
           <button
             onClick={() => setConfirming(true)}
             className="flex-1 rounded-2xl bg-rose-50 py-3 font-semibold text-rose-500 dark:bg-rose-500/10"

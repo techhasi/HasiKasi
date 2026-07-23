@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, uid, type PendingTxn } from '../db/db'
+import { db, uid, getSettings, type PendingTxn, type Txn } from '../db/db'
 import { parseSms } from '../lib/smsParser'
 import { fmt } from '../lib/money'
 import { friendlyDate } from '../lib/dates'
+import { computeBalances, addAdjustment } from '../lib/balances'
 import Sheet from './Sheet'
 import AddSheet from './AddSheet'
 
@@ -40,6 +41,8 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
           date: r.date,
           merchant: r.merchant,
           accountHint: r.accountHint,
+          balanceMinor: r.balanceMinor ?? undefined,
+          balanceCurrency: r.balanceMinor !== null ? r.balanceCurrency : undefined,
           createdAt: Date.now()
         }))
       )
@@ -50,6 +53,27 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
     if (skipped) parts.push(`${skipped} skipped (no amount)`)
     setInfo(parts.length ? parts.join(' · ') : '❌ No amounts found — is this a bank message?')
     if (fresh.length) setText('')
+  }
+
+  /**
+   * After an SMS txn is approved: if the message stated the account balance,
+   * log an adjustment so the app's balance matches the bank exactly.
+   */
+  async function reconcile(p: PendingTxn, saved: Txn) {
+    if (p.balanceMinor == null || (p.balanceCurrency ?? 'LKR') !== 'LKR' || saved.type === 'transfer') return
+    const s = await getSettings()
+    const [accs, txns] = await Promise.all([db.accounts.toArray(), db.txns.toArray()])
+    const computed = computeBalances(accs, txns, s.usdRate).get(saved.accountId) ?? 0
+    const diff = p.balanceMinor - computed
+    const accName = accs.find(a => a.id === saved.accountId)?.name ?? 'Account'
+    if (diff === 0) {
+      setInfo(`✅ ${accName} matches the bank balance`)
+      return
+    }
+    await addAdjustment(saved.accountId, diff, 'Synced to bank SMS balance', saved.date)
+    setInfo(
+      `⚖️ ${accName} adjusted by ${diff > 0 ? '+' : '−'}${fmt(Math.abs(diff), 'LKR', { compactCents: true })} to match the bank`
+    )
   }
 
   async function pasteAndScan() {
@@ -155,6 +179,11 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
                   {fmt(p.amountMinor, p.currency, { compactCents: true })}
                 </p>
                 {p.merchant && <p className="truncate text-sm font-medium">{p.merchant}</p>}
+                {p.balanceMinor != null && (
+                  <p className="text-xs text-slate-400">
+                    ⚖️ bank balance: {fmt(p.balanceMinor, p.balanceCurrency ?? 'LKR', { compactCents: true })} — will sync on approve
+                  </p>
+                )}
 
                 <details className="mt-1">
                   <summary className="cursor-pointer text-xs text-slate-400">Original message</summary>
@@ -191,7 +220,10 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
             note: adding.merchant,
             accountId: matchAccount(adding.accountHint)
           }}
-          onSaved={() => db.pending.delete(adding.id)}
+          onSaved={async saved => {
+            await db.pending.delete(adding.id)
+            await reconcile(adding, saved)
+          }}
           onClose={() => setAdding(null)}
         />
       )}

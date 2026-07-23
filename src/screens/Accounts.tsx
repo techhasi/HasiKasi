@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, DEFAULT_SETTINGS, type Account, type Investment, type Recurring } from '../db/db'
 import { fmt, toLKR, parseAmount } from '../lib/money'
 import { shortDate, currentMonth, endOfMonthISO } from '../lib/dates'
-import { computeBalances } from '../lib/balances'
+import { computeBalances, addAdjustment } from '../lib/balances'
 import Sheet from '../components/Sheet'
 import RecurringSheet from '../components/RecurringSheet'
 import InvestmentSheet, { INVESTMENT_TYPES } from '../components/InvestmentSheet'
@@ -23,7 +23,7 @@ export default function Accounts() {
   const recurring = useLiveQuery(() => db.recurring.orderBy('nextDue').toArray(), [], [])
   const investments = useLiveQuery(() => db.investments.toArray(), [], [])
 
-  const [accountSheet, setAccountSheet] = useState<{ edit?: Account } | null>(null)
+  const [accountSheet, setAccountSheet] = useState<{ edit?: Account; balanceMinor?: number } | null>(null)
   const [recurringSheet, setRecurringSheet] = useState<{ edit?: Recurring } | null>(null)
   const [investmentSheet, setInvestmentSheet] = useState<{ edit?: Investment } | null>(null)
 
@@ -58,7 +58,7 @@ export default function Accounts() {
           return (
             <button
               key={a.id}
-              onClick={() => setAccountSheet({ edit: a })}
+              onClick={() => setAccountSheet({ edit: a, balanceMinor: bal })}
               className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50 dark:bg-slate-800/60 dark:active:bg-slate-700/40"
             >
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl" style={{ backgroundColor: `${a.color}22` }}>
@@ -156,7 +156,9 @@ export default function Accounts() {
         </div>
       )}
 
-      {accountSheet && <AccountSheet edit={accountSheet.edit} onClose={() => setAccountSheet(null)} />}
+      {accountSheet && (
+        <AccountSheet edit={accountSheet.edit} balanceMinor={accountSheet.balanceMinor} onClose={() => setAccountSheet(null)} />
+      )}
       {recurringSheet && <RecurringSheet edit={recurringSheet.edit} onClose={() => setRecurringSheet(null)} />}
       {investmentSheet && <InvestmentSheet edit={investmentSheet.edit} onClose={() => setInvestmentSheet(null)} />}
     </div>
@@ -182,13 +184,14 @@ function EmptyHint({ text }: { text: string }) {
   )
 }
 
-function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }) {
+function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balanceMinor?: number; onClose: () => void }) {
   const [name, setName] = useState(edit?.name ?? '')
   const [type, setType] = useState<Account['type']>(edit?.type ?? 'bank')
   const [color, setColor] = useState(edit?.color ?? ACCOUNT_COLORS[1])
   const [opening, setOpening] = useState(edit && edit.openingMinor ? (edit.openingMinor / 100).toFixed(2) : '')
   const [numberHint, setNumberHint] = useState(edit?.numberHint ?? '')
   const [statement, setStatement] = useState(edit?.statementMinor ? (edit.statementMinor / 100).toFixed(2) : '')
+  const [actualBalance, setActualBalance] = useState('')
   const [error, setError] = useState('')
 
   async function save() {
@@ -205,8 +208,18 @@ function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }
       // A newly entered statement means a new billing cycle — show the reminder again
       if (statementMinor && statementMinor !== edit?.statementMinor) fields.lastPaidMonth = undefined
     }
-    if (edit) await db.accounts.update(edit.id, fields)
-    else await db.accounts.add({ id: uid(), openingMinor: 0, ...fields } as Account)
+    if (edit) {
+      await db.accounts.update(edit.id, fields)
+      // Reconcile to the real-world balance via an adjustment transaction
+      if (actualBalance.trim()) {
+        const target = parseAmount(actualBalance, { allowZero: true })
+        if (target === null) return setError('Invalid actual balance')
+        const diff = target - (balanceMinor ?? 0)
+        if (diff !== 0) await addAdjustment(edit.id, diff, 'Manual balance adjustment')
+      }
+    } else {
+      await db.accounts.add({ id: uid(), openingMinor: 0, ...fields } as Account)
+    }
     onClose()
   }
 
@@ -270,6 +283,21 @@ function AccountSheet({ edit, onClose }: { edit?: Account; onClose: () => void }
           />
           <p className="mb-4 text-xs text-slate-400">
             Due by the last day of the month. Leave empty to use the card's outstanding balance.
+          </p>
+        </>
+      )}
+      {edit && (
+        <>
+          <input
+            placeholder={`Actual balance now (app shows ${fmt(balanceMinor ?? 0, 'LKR', { compactCents: true })})`}
+            inputMode="decimal"
+            value={actualBalance}
+            onChange={e => setActualBalance(e.target.value)}
+            className="mb-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+          <p className="mb-4 text-xs text-slate-400">
+            ⚖️ Enter what the bank actually shows and the difference is logged as an adjustment (doesn't affect
+            spending stats).
           </p>
         </>
       )}

@@ -27,6 +27,7 @@ export function computeTotals(txns: Txn[], period: Period, usdRate: number): Per
   let earning = 0
   for (const t of txnsInPeriod(txns, period)) {
     if (t.type === 'transfer') continue // moves money between accounts, not in/out
+    if (t.adjustment) continue // balance corrections don't count as spending/earning
     const lkr = toLKR(t.amountMinor, t.currency, usdRate)
     if (t.type === 'expense') spending += lkr
     else earning += lkr

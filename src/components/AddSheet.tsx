@@ -50,7 +50,7 @@ export default function AddSheet({
   initial?: AddInitial
   /** when set, the sheet edits this existing transaction instead of adding */
   edit?: Txn
-  onSaved?: () => void
+  onSaved?: (saved: Txn) => void
 }) {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
@@ -135,23 +135,23 @@ export default function AddSheet({
         note: note.trim()
       }
 
-      let id: string
+      let saved: Txn
       if (edit) {
         // Edits never re-trigger period changes; the original startsPeriod flag is kept.
-        id = edit.id
-        await db.txns.update(id, fields)
+        saved = { ...edit, ...fields }
+        await db.txns.update(edit.id, fields)
       } else {
         const willStartPeriod = isSalary && startsPeriod
         if (willStartPeriod) await startNewPeriod(date)
-        id = uid()
-        await db.txns.add({ id, ...fields, startsPeriod: willStartPeriod || undefined, createdAt: Date.now() })
+        saved = { id: uid(), ...fields, startsPeriod: willStartPeriod || undefined, createdAt: Date.now() }
+        await db.txns.add(saved)
       }
 
       if (type === 'expense' && receipt) {
         const blob = await compressImage(receipt)
-        await db.receipts.put({ txnId: id, blob })
+        await db.receipts.put({ txnId: saved.id, blob })
       }
-      onSaved?.()
+      onSaved?.(saved)
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')

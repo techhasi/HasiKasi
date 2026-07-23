@@ -18,11 +18,19 @@ const SECTIONS: { title: string; body: string[] }[] = [
     ]
   },
   {
-    title: '📥 SMS import',
+    title: '📥 SMS import & balance sync',
     body: [
       'Copy bank SMS messages and tap the 📥 button on Home, then "Paste & scan". Detected transactions wait in an inbox for your approval.',
       'Set the last 4 digits on each account (Accounts → tap account) so imports pick the right account automatically.',
+      'If the SMS states your available balance, approving the transaction auto-syncs the account: any difference from the app\'s balance is logged as an ⚖️ Adjustment.',
       'For automation: create an iOS Shortcut that copies bank SMS to the clipboard when they arrive (guide inside the import screen).'
+    ]
+  },
+  {
+    title: '⚖️ Balance adjustments',
+    body: [
+      'Adjustments correct an account\'s balance to match the real world — created automatically from SMS balances, or manually via the "actual balance now" field when editing an account.',
+      'They only affect account balances: spending/earning totals, budgets, stats and carry-over ignore them, so corrections never distort your budget months.'
     ]
   },
   {
@@ -34,14 +42,16 @@ const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: '🔁 Recurring, loans & card bills',
     body: [
-      'Add rent, subscriptions, and loan installments in Accounts → Recurring & loans. When due, they appear on Home — Log ✓ records the expense, Skip moves to next cycle. Loans show payoff progress.',
-      'Credit cards: set the statement amount when the bill arrives (Accounts → tap the card). It\'s due by the last day of the month — Home shows a countdown. Pay ✓ records a transfer from your bank to the card.'
+      'Add rent, subscriptions, and loan installments in Accounts → Recurring & loans. They appear on Home from 3 days before they\'re due — Log ✓ records the expense, Skip moves to next cycle. Loans show payoff progress.',
+      'Credit cards: set the statement amount when the bill arrives (Accounts → tap the card). It\'s due by the last day of the month — Home shows a countdown. Pay ✓ records a transfer from your bank to the card; Dismiss marks it paid without logging.'
     ]
   },
   {
-    title: '💳 Accounts, investments & net worth',
+    title: '💳 Accounts, cards & net worth',
     body: [
-      'Accounts tracks cash, bank and card balances — they update automatically from your transactions.',
+      'Four account types: Cash, Bank, Debit card (works like bank money), and Credit card (a debt you owe).',
+      'Credit cards show negative balances as you spend — that\'s money owed, and it correctly reduces net worth. Enter existing debt as a negative opening balance (e.g. -45000).',
+      'Set a credit limit on each credit card to see remaining available credit and a limit-usage bar (amber past 70%, red past 90%).',
       'Investments & savings (FDs, stocks, crypto, EPF) are tracked separately and count toward net worth. Tap one to update its value.'
     ]
   },

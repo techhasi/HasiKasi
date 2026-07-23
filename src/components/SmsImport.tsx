@@ -26,9 +26,13 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
     const results = parseSms(source)
     const ok = results.filter(r => r.amountMinor !== null)
     const skipped = results.length - ok.length
-    // Don't queue the exact same message twice
+    // Don't queue the exact same message twice — vs the inbox or within this paste
     const seen = new Set((await db.pending.toArray()).map(p => p.raw))
-    const fresh = ok.filter(r => !seen.has(r.raw))
+    const fresh = ok.filter(r => {
+      if (seen.has(r.raw)) return false
+      seen.add(r.raw)
+      return true
+    })
     const dups = ok.length - fresh.length
     if (fresh.length) {
       await db.pending.bulkAdd(

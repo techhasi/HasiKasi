@@ -59,7 +59,7 @@ export default function Dashboard() {
     const month = currentMonth()
     const balances = computeBalances(accounts, txns, settings?.usdRate ?? 300)
     return accounts
-      .filter(a => a.type === 'card' && a.lastPaidMonth !== month)
+      .filter(a => a.type === 'credit' && a.lastPaidMonth !== month)
       .map(a => ({ account: a, dueMinor: a.statementMinor ?? Math.max(0, -(balances.get(a.id) ?? 0)) }))
       .filter(c => c.dueMinor > 0)
   }, [accounts, txns, settings?.usdRate])

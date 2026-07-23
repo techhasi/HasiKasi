@@ -17,19 +17,23 @@ export interface Category {
   budgetMinor?: number
 }
 
+export type AccountType = 'cash' | 'bank' | 'debit' | 'credit'
+
 export interface Account {
   id: string
   name: string
-  type: 'cash' | 'bank' | 'card'
+  type: AccountType
   color: string
   /** opening balance in LKR minor units (cents) */
   openingMinor: number
   /** last 3-4 digits of the card/account, used to auto-match SMS imports */
   numberHint?: string
-  /** cards: this month's statement amount due (LKR minor); unset = use outstanding balance */
+  /** credit cards: this month's statement amount due (LKR minor); unset = use outstanding balance */
   statementMinor?: number
-  /** cards: "YYYY-MM" when the bill was last marked paid, hides the due reminder */
+  /** credit cards: "YYYY-MM" when the bill was last marked paid, hides the due reminder */
   lastPaidMonth?: string
+  /** credit cards: credit limit (LKR minor), used to show available credit */
+  creditLimitMinor?: number
 }
 
 export interface Txn {
@@ -217,6 +221,10 @@ export async function initDb() {
     }
     if ((await db.accounts.count()) === 0) {
       await db.accounts.add({ id: uid(), name: 'Cash', type: 'cash', color: '#10b981', openingMinor: 0 })
+    } else {
+      // Migrate legacy generic 'card' accounts to 'credit' (statement/due features target credit cards)
+      const legacy = (await db.accounts.toArray()).filter(a => (a.type as string) === 'card')
+      for (const a of legacy) await db.accounts.update(a.id, { type: 'credit' })
     }
     if ((await db.periods.count()) === 0) {
       // Initial period starts on the 1st of the current month; the first

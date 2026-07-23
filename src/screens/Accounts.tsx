@@ -11,7 +11,8 @@ import InvestmentSheet, { INVESTMENT_TYPES } from '../components/InvestmentSheet
 const ACCOUNT_TYPES = [
   { id: 'cash', label: 'Cash', emoji: '💵' },
   { id: 'bank', label: 'Bank', emoji: '🏦' },
-  { id: 'card', label: 'Card', emoji: '💳' }
+  { id: 'debit', label: 'Debit card', emoji: '🏧' },
+  { id: 'credit', label: 'Credit card', emoji: '💳' }
 ] as const
 
 const ACCOUNT_COLORS = ['#10b981', '#6366f1', '#f59e0b', '#06b6d4', '#ec4899', '#8b5cf6', '#ef4444', '#64748b']
@@ -55,22 +56,28 @@ export default function Accounts() {
         {accounts.map(a => {
           const bal = balances.get(a.id) ?? 0
           const t = ACCOUNT_TYPES.find(t => t.id === a.type)
+          const usedMinor = a.type === 'credit' ? Math.max(0, -bal) : 0
+          const limitUsage = a.type === 'credit' && a.creditLimitMinor ? usedMinor / a.creditLimitMinor : null
           return (
             <button
               key={a.id}
               onClick={() => setAccountSheet({ edit: a, balanceMinor: bal })}
-              className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50 dark:bg-slate-800/60 dark:active:bg-slate-700/40"
+              className="block w-full rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50 dark:bg-slate-800/60 dark:active:bg-slate-700/40"
             >
+            <div className="flex w-full items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl" style={{ backgroundColor: `${a.color}22` }}>
                 {t?.emoji}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{a.name}</p>
-                <p className="text-xs capitalize text-slate-400">
-                  {a.type}
+                <p className="text-xs text-slate-400">
+                  {t?.label ?? a.type}
                   {a.numberHint && ` · •••${a.numberHint}`}
+                  {a.type === 'credit' && a.creditLimitMinor != null && (
+                    <> · avail {fmt(Math.max(0, a.creditLimitMinor + bal), 'LKR', { compactCents: true })}</>
+                  )}
                 </p>
-                {a.type === 'card' && a.lastPaidMonth !== currentMonth() && (a.statementMinor ?? Math.max(0, -bal)) > 0 && (
+                {a.type === 'credit' && a.lastPaidMonth !== currentMonth() && (a.statementMinor ?? Math.max(0, -bal)) > 0 && (
                   <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
                     {fmt(a.statementMinor ?? -bal, 'LKR', { compactCents: true })} due by {shortDate(endOfMonthISO())}
                   </p>
@@ -79,6 +86,24 @@ export default function Accounts() {
               <p className={`text-base font-bold tabular-nums ${bal < 0 ? 'text-rose-500' : ''}`}>
                 {fmt(bal, 'LKR', { compactCents: true })}
               </p>
+            </div>
+            {limitUsage !== null && (
+              <div className="mt-2.5 pl-[56px]">
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, Math.round(limitUsage * 100))}%`,
+                      backgroundColor: limitUsage > 0.9 ? '#ef4444' : limitUsage > 0.7 ? '#f59e0b' : '#0ea5e9'
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  {fmt(usedMinor, 'LKR', { compactCents: true })} of {fmt(a.creditLimitMinor!, 'LKR', { compactCents: true })} limit used
+                  {' '}({Math.round(limitUsage * 100)}%)
+                </p>
+              </div>
+            )}
             </button>
           )
         })}
@@ -191,6 +216,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
   const [opening, setOpening] = useState(edit && edit.openingMinor ? (edit.openingMinor / 100).toFixed(2) : '')
   const [numberHint, setNumberHint] = useState(edit?.numberHint ?? '')
   const [statement, setStatement] = useState(edit?.statementMinor ? (edit.statementMinor / 100).toFixed(2) : '')
+  const [creditLimit, setCreditLimit] = useState(edit?.creditLimitMinor ? (edit.creditLimitMinor / 100).toFixed(2) : '')
   const [actualBalance, setActualBalance] = useState('')
   const [error, setError] = useState('')
 
@@ -200,13 +226,19 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
     if (openingMinor === null) return setError('Invalid opening balance')
     const hint = numberHint.replace(/\D/g, '').slice(-4)
     const fields: Partial<Account> = { name: name.trim(), type, color, openingMinor, numberHint: hint || undefined }
-    if (type === 'card') {
+    if (type === 'credit') {
       // 0 clears the statement (nothing due)
       const statementMinor = statement.trim() ? parseAmount(statement, { allowZero: true }) : undefined
       if (statement.trim() && statementMinor === null) return setError('Invalid due amount')
       fields.statementMinor = statementMinor || undefined
       // A newly entered statement means a new billing cycle — show the reminder again
       if (statementMinor && statementMinor !== edit?.statementMinor) fields.lastPaidMonth = undefined
+      const limitMinor = creditLimit.trim() ? parseAmount(creditLimit) : undefined
+      if (creditLimit.trim() && !limitMinor) return setError('Invalid credit limit')
+      fields.creditLimitMinor = limitMinor
+    } else {
+      fields.statementMinor = undefined
+      fields.creditLimitMinor = undefined
     }
     if (edit) {
       await db.accounts.update(edit.id, fields)
@@ -232,12 +264,12 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
         onChange={e => setName(e.target.value)}
         className="mb-3 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
       />
-      <div className="mb-3 flex gap-2">
+      <div className="mb-3 grid grid-cols-2 gap-2">
         {ACCOUNT_TYPES.map(t => (
           <button
             key={t.id}
             onClick={() => setType(t.id)}
-            className={`flex-1 rounded-2xl border-2 p-3 text-sm font-medium ${
+            className={`rounded-2xl border-2 p-3 text-sm font-medium ${
               type === t.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10' : 'border-transparent bg-slate-50 dark:bg-slate-800/60'
             }`}
           >
@@ -256,7 +288,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
         ))}
       </div>
       <input
-        placeholder={type === 'card' ? 'Opening balance (use -amount for existing debt)' : 'Opening balance (Rs, optional)'}
+        placeholder={type === 'credit' ? 'Opening balance (use -amount for existing debt)' : 'Opening balance (Rs, optional)'}
         inputMode="text"
         value={opening}
         onChange={e => setOpening(e.target.value)}
@@ -272,7 +304,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
       <p className="mb-4 text-xs text-slate-400">
         SMS imports mentioning these digits will pick this account automatically.
       </p>
-      {type === 'card' && (
+      {type === 'credit' && (
         <>
           <input
             placeholder="This month's due amount (Rs, from statement)"
@@ -281,9 +313,17 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
             onChange={e => setStatement(e.target.value)}
             className="mb-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
-          <p className="mb-4 text-xs text-slate-400">
+          <p className="mb-3 text-xs text-slate-400">
             Due by the last day of the month. Leave empty to use the card's outstanding balance.
           </p>
+          <input
+            placeholder="Credit limit (Rs, optional)"
+            inputMode="decimal"
+            value={creditLimit}
+            onChange={e => setCreditLimit(e.target.value)}
+            className="mb-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+          <p className="mb-4 text-xs text-slate-400">Used to show your remaining available credit.</p>
         </>
       )}
       {edit && (

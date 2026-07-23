@@ -19,9 +19,12 @@ export default function Dashboard() {
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
   const pendingCount = useLiveQuery(() => db.pending.count(), [], 0)
-  // Due now plus a 3-day advance warning
+  // Due now plus a 5-day advance warning; fully-paid loans no longer nag
   const due = useLiveQuery(
-    () => db.recurring.where('nextDue').belowOrEqual(addDaysISO(todayISO(), 3)).sortBy('nextDue'),
+    async () =>
+      (await db.recurring.where('nextDue').belowOrEqual(addDaysISO(todayISO(), 5)).sortBy('nextDue')).filter(
+        r => !(r.kind === 'loan' && r.principalMinor != null && (r.paidMinor ?? 0) >= r.principalMinor)
+      ),
     [],
     []
   )

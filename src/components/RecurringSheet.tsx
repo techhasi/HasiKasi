@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, DEFAULT_SETTINGS, type Currency, type Recurring } from '../db/db'
-import { parseAmount, CURRENCY_SYMBOL } from '../lib/money'
-import { firstDue } from '../lib/recurring'
+import { parseAmount, fmt, CURRENCY_SYMBOL } from '../lib/money'
+import { firstDue, logRecurring, payOffLoan, loanRemaining } from '../lib/recurring'
 import Sheet from './Sheet'
 
 const INTERVALS = [
@@ -31,6 +31,9 @@ export default function RecurringSheet({ edit, onClose }: { edit?: Recurring; on
   const [paid, setPaid] = useState(edit?.paidMinor ? (edit.paidMinor / 100).toFixed(2) : '')
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
+  const [confirmingPayoff, setConfirmingPayoff] = useState(false)
+
+  const remaining = edit && edit.kind === 'loan' ? loanRemaining(edit) : 0
 
   const effectiveCategoryId = categoryId ?? categories.find(c => c.name === 'Bills')?.id ?? categories[0]?.id ?? null
   const effectiveAccountId = accountId ?? accounts[0]?.id ?? null
@@ -212,6 +215,39 @@ export default function RecurringSheet({ edit, onClose }: { edit?: Recurring; on
       />
 
       {error && <p className="mb-3 text-center text-sm font-medium text-rose-500">{error}</p>}
+
+      {/* Early payment actions — always available, not just when due */}
+      {edit && (
+        <div className="mb-3 space-y-2">
+          <button
+            onClick={async () => { await logRecurring(edit); onClose() }}
+            className="w-full rounded-2xl bg-emerald-500 py-3 font-bold text-white shadow-lg shadow-emerald-500/30"
+          >
+            ✓ Log {edit.kind === 'loan' ? 'installment' : 'payment'} now ({fmt(edit.amountMinor, edit.currency, { compactCents: true })})
+          </button>
+          {edit.kind === 'loan' && remaining > 0 &&
+            (confirmingPayoff ? (
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmingPayoff(false)} className="flex-1 rounded-2xl bg-slate-100 py-3 font-semibold dark:bg-slate-800">
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => { await payOffLoan(edit); onClose() }}
+                  className="flex-1 rounded-2xl bg-amber-500 py-3 font-semibold text-white"
+                >
+                  Yes, settle it
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmingPayoff(true)}
+                className="w-full rounded-2xl bg-amber-50 py-3 font-semibold text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+              >
+                💰 Pay off remaining ({fmt(remaining, edit.currency, { compactCents: true })})
+              </button>
+            ))}
+        </div>
+      )}
 
       <button onClick={save} className="mb-2 w-full rounded-2xl bg-indigo-500 py-3.5 font-bold text-white shadow-lg shadow-indigo-500/30">
         {edit ? 'Save changes' : 'Add recurring payment'}

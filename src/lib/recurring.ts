@@ -47,3 +47,27 @@ export async function logRecurring(r: Recurring): Promise<void> {
 export async function skipRecurring(r: Recurring): Promise<void> {
   await db.recurring.update(r.id, { nextDue: advanceDue(r.nextDue, r.dayOfMonth, r.intervalMonths) })
 }
+
+export function loanRemaining(r: Recurring): number {
+  return Math.max(0, (r.principalMinor ?? 0) - (r.paidMinor ?? 0))
+}
+
+/** Settle a loan's full remaining amount early as a single expense. */
+export async function payOffLoan(r: Recurring): Promise<void> {
+  const remaining = loanRemaining(r)
+  if (remaining <= 0) return
+  await db.transaction('rw', [db.txns, db.recurring], async () => {
+    await db.txns.add({
+      id: uid(),
+      type: 'expense',
+      amountMinor: remaining,
+      currency: r.currency,
+      categoryId: r.categoryId,
+      accountId: r.accountId,
+      date: todayISO(),
+      note: `${r.name} · full settlement`,
+      createdAt: Date.now()
+    })
+    await db.recurring.update(r.id, { paidMinor: r.principalMinor })
+  })
+}

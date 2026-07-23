@@ -196,7 +196,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
 
   async function save() {
     if (!name.trim()) return setError('Enter a name')
-    const openingMinor = opening.trim() ? parseAmount(opening, { allowZero: true }) : 0
+    const openingMinor = opening.trim() ? parseAmount(opening, { allowZero: true, allowNegative: true }) : 0
     if (openingMinor === null) return setError('Invalid opening balance')
     const hint = numberHint.replace(/\D/g, '').slice(-4)
     const fields: Partial<Account> = { name: name.trim(), type, color, openingMinor, numberHint: hint || undefined }
@@ -212,7 +212,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
       await db.accounts.update(edit.id, fields)
       // Reconcile to the real-world balance via an adjustment transaction
       if (actualBalance.trim()) {
-        const target = parseAmount(actualBalance, { allowZero: true })
+        const target = parseAmount(actualBalance, { allowZero: true, allowNegative: true })
         if (target === null) return setError('Invalid actual balance')
         const diff = target - (balanceMinor ?? 0)
         if (diff !== 0) await addAdjustment(edit.id, diff, 'Manual balance adjustment')
@@ -256,8 +256,8 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
         ))}
       </div>
       <input
-        placeholder="Opening balance (Rs, optional)"
-        inputMode="decimal"
+        placeholder={type === 'card' ? 'Opening balance (use -amount for existing debt)' : 'Opening balance (Rs, optional)'}
+        inputMode="text"
         value={opening}
         onChange={e => setOpening(e.target.value)}
         className="mb-3 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"

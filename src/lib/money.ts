@@ -16,13 +16,16 @@ export function fmt(minor: number, currency: Currency = 'LKR', opts?: { compactC
 /**
  * Parse a user-typed decimal string into minor units. Returns null when invalid.
  * Zero is rejected by default (transactions need positive amounts); pass
- * `allowZero` for fields like opening balances where 0 is legitimate.
+ * `allowZero` for fields like opening balances where 0 is legitimate, and
+ * `allowNegative` for balances that can be debt (credit cards, overdrafts).
  */
-export function parseAmount(input: string, opts?: { allowZero?: boolean }): number | null {
+export function parseAmount(input: string, opts?: { allowZero?: boolean; allowNegative?: boolean }): number | null {
   const cleaned = input.replace(/[,\s]/g, '')
-  if (!/^\d+(\.\d{0,2})?$/.test(cleaned)) return null
-  const n = Math.round(parseFloat(cleaned) * 100)
-  if (!Number.isFinite(n) || n < 0) return null
+  const m = cleaned.match(/^(-?)(\d+(?:\.\d{0,2})?)$/)
+  if (!m) return null
+  if (m[1] === '-' && !opts?.allowNegative) return null
+  const n = Math.round(parseFloat(m[2]) * 100) * (m[1] === '-' ? -1 : 1)
+  if (!Number.isFinite(n)) return null
   if (n === 0 && !opts?.allowZero) return null
   return n
 }

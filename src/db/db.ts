@@ -24,7 +24,9 @@ export interface Account {
   name: string
   type: AccountType
   color: string
-  /** opening balance in LKR minor units (cents) */
+  /** account's own currency; balances are kept in it (default LKR) */
+  currency?: Currency
+  /** opening balance in minor units of the account's currency */
   openingMinor: number
   /** last 3-4 digits of the card/account, used to auto-match SMS imports */
   numberHint?: string

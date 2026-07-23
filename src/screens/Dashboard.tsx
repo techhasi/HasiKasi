@@ -31,7 +31,7 @@ export default function Dashboard() {
   const [detail, setDetail] = useState<Txn | null>(null)
   const [smsOpen, setSmsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [payCard, setPayCard] = useState<{ account: Account; dueMinor: number } | null>(null)
+  const [payCard, setPayCard] = useState<{ account: Account; dueMinor: number; currency: 'LKR' | 'USD' } | null>(null)
 
   const period = periods.length ? periods[Math.max(0, periods.length - 1 - periodOffset)] : undefined
 
@@ -60,7 +60,11 @@ export default function Dashboard() {
     const balances = computeBalances(accounts, txns, settings?.usdRate ?? 300)
     return accounts
       .filter(a => a.type === 'credit' && a.lastPaidMonth !== month)
-      .map(a => ({ account: a, dueMinor: a.statementMinor ?? Math.max(0, -(balances.get(a.id) ?? 0)) }))
+      .map(a => ({
+        account: a,
+        currency: a.currency ?? ('LKR' as const),
+        dueMinor: a.statementMinor ?? Math.max(0, -(balances.get(a.id) ?? 0))
+      }))
       .filter(c => c.dueMinor > 0)
   }, [accounts, txns, settings?.usdRate])
 
@@ -225,7 +229,7 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{c.account.name}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {fmt(c.dueMinor, 'LKR', { compactCents: true })} ·{' '}
+                    {fmt(c.dueMinor, c.currency, { compactCents: true })} ·{' '}
                     {daysUntil(endOfMonthISO()) === 0 ? 'due today!' : `${daysUntil(endOfMonthISO())} days left`}
                   </p>
                 </div>
@@ -357,6 +361,7 @@ export default function Dashboard() {
           initial={{
             type: 'transfer',
             amount: (payCard.dueMinor / 100).toFixed(2),
+            currency: payCard.account.currency ?? 'LKR',
             toAccountId: payCard.account.id,
             note: `${payCard.account.name} bill`
           }}

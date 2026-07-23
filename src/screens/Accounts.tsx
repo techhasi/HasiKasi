@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, uid, DEFAULT_SETTINGS, type Account, type Investment, type Recurring } from '../db/db'
-import { fmt, toLKR, parseAmount } from '../lib/money'
+import { db, uid, DEFAULT_SETTINGS, type Account, type Currency, type Investment, type Recurring } from '../db/db'
+import { fmt, toLKR, parseAmount, CURRENCY_SYMBOL } from '../lib/money'
 import { shortDate, currentMonth, endOfMonthISO } from '../lib/dates'
 import { computeBalances, addAdjustment } from '../lib/balances'
 import Sheet from '../components/Sheet'
@@ -32,7 +32,10 @@ export default function Accounts() {
 
   const balances = useMemo(() => computeBalances(accounts, txns, usdRate), [accounts, txns, usdRate])
 
-  const accountsTotal = [...balances.values()].reduce((s, v) => s + v, 0)
+  const accountsTotal = accounts.reduce(
+    (s, a) => s + toLKR(balances.get(a.id) ?? 0, a.currency ?? 'LKR', usdRate),
+    0
+  )
   const investedTotal = investments.reduce((s, i) => s + toLKR(i.valueMinor, i.currency, usdRate), 0)
 
   return (
@@ -55,6 +58,7 @@ export default function Accounts() {
       <div className="mb-6 space-y-3">
         {accounts.map(a => {
           const bal = balances.get(a.id) ?? 0
+          const accCur = a.currency ?? 'LKR'
           const t = ACCOUNT_TYPES.find(t => t.id === a.type)
           const usedMinor = a.type === 'credit' ? Math.max(0, -bal) : 0
           const limitUsage = a.type === 'credit' && a.creditLimitMinor ? usedMinor / a.creditLimitMinor : null
@@ -72,21 +76,22 @@ export default function Accounts() {
                 <p className="truncate text-sm font-semibold">{a.name}</p>
                 <p className="text-xs text-slate-400">
                   {t?.label ?? a.type}
+                  {accCur !== 'LKR' && ` · ${accCur}`}
                   {a.numberHint && ` · •••${a.numberHint}`}
                 </p>
                 {a.type === 'credit' && a.lastPaidMonth !== currentMonth() && (a.statementMinor ?? Math.max(0, -bal)) > 0 && (
                   <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                    {fmt(a.statementMinor ?? -bal, 'LKR', { compactCents: true })} due by {shortDate(endOfMonthISO())}
+                    {fmt(a.statementMinor ?? -bal, accCur, { compactCents: true })} due by {shortDate(endOfMonthISO())}
                   </p>
                 )}
               </div>
               <div className="text-right">
                 <p className={`text-base font-bold tabular-nums ${bal < 0 ? 'text-rose-500' : ''}`}>
-                  {fmt(bal, 'LKR', { compactCents: true })}
+                  {fmt(bal, accCur, { compactCents: true })}
                 </p>
                 {a.type === 'credit' && a.creditLimitMinor != null && (
                   <p className="text-xs font-semibold tabular-nums text-emerald-500">
-                    {fmt(Math.max(0, a.creditLimitMinor + bal), 'LKR', { compactCents: true })} available
+                    {fmt(Math.max(0, a.creditLimitMinor + bal), accCur, { compactCents: true })} available
                   </p>
                 )}
               </div>
@@ -103,7 +108,7 @@ export default function Accounts() {
                   />
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
-                  {fmt(usedMinor, 'LKR', { compactCents: true })} of {fmt(a.creditLimitMinor!, 'LKR', { compactCents: true })} limit used
+                  {fmt(usedMinor, accCur, { compactCents: true })} of {fmt(a.creditLimitMinor!, accCur, { compactCents: true })} limit used
                   {' '}({Math.round(limitUsage * 100)}%)
                 </p>
               </div>
@@ -216,6 +221,7 @@ function EmptyHint({ text }: { text: string }) {
 function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balanceMinor?: number; onClose: () => void }) {
   const [name, setName] = useState(edit?.name ?? '')
   const [type, setType] = useState<Account['type']>(edit?.type ?? 'bank')
+  const [accCurrency, setAccCurrency] = useState<Currency>(edit?.currency ?? 'LKR')
   const [color, setColor] = useState(edit?.color ?? ACCOUNT_COLORS[1])
   const [opening, setOpening] = useState(edit && edit.openingMinor ? (edit.openingMinor / 100).toFixed(2) : '')
   const [numberHint, setNumberHint] = useState(edit?.numberHint ?? '')
@@ -229,7 +235,14 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
     const openingMinor = opening.trim() ? parseAmount(opening, { allowZero: true, allowNegative: true }) : 0
     if (openingMinor === null) return setError('Invalid opening balance')
     const hint = numberHint.replace(/\D/g, '').slice(-4)
-    const fields: Partial<Account> = { name: name.trim(), type, color, openingMinor, numberHint: hint || undefined }
+    const fields: Partial<Account> = {
+      name: name.trim(),
+      type,
+      color,
+      currency: accCurrency,
+      openingMinor,
+      numberHint: hint || undefined
+    }
     if (type === 'credit') {
       // 0 clears the statement (nothing due)
       const statementMinor = statement.trim() ? parseAmount(statement, { allowZero: true }) : undefined
@@ -251,7 +264,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
         const target = parseAmount(actualBalance, { allowZero: true, allowNegative: true })
         if (target === null) return setError('Invalid actual balance')
         const diff = target - (balanceMinor ?? 0)
-        if (diff !== 0) await addAdjustment(edit.id, diff, 'Manual balance adjustment')
+        if (diff !== 0) await addAdjustment(edit.id, diff, 'Manual balance adjustment', undefined, accCurrency)
       }
     } else {
       await db.accounts.add({ id: uid(), openingMinor: 0, ...fields } as Account)
@@ -291,8 +304,33 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
           />
         ))}
       </div>
+      <div className="mb-3 flex items-center justify-between rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/60">
+        <span className="text-sm font-medium">Account currency</span>
+        <div className="flex rounded-xl bg-slate-200/70 p-0.5 dark:bg-slate-700/60">
+          {(['LKR', 'USD'] as const).map(c => (
+            <button
+              key={c}
+              onClick={() => setAccCurrency(c)}
+              className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${
+                accCurrency === c ? 'bg-white text-indigo-600 shadow dark:bg-slate-900 dark:text-indigo-400' : 'text-slate-500'
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+      {edit && accCurrency !== (edit.currency ?? 'LKR') && (
+        <p className="mb-3 rounded-2xl bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+          ⚠️ Changing currency reinterprets this account's opening balance in {accCurrency} — check the balance after saving.
+        </p>
+      )}
       <input
-        placeholder={type === 'credit' ? 'Opening balance (use -amount for existing debt)' : 'Opening balance (Rs, optional)'}
+        placeholder={
+          type === 'credit'
+            ? 'Opening balance (use -amount for existing debt)'
+            : `Opening balance (${CURRENCY_SYMBOL[accCurrency]}, optional)`
+        }
         inputMode="text"
         value={opening}
         onChange={e => setOpening(e.target.value)}
@@ -333,7 +371,7 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
       {edit && (
         <>
           <input
-            placeholder={`Actual balance now (app shows ${fmt(balanceMinor ?? 0, 'LKR', { compactCents: true })})`}
+            placeholder={`Actual balance now (app shows ${fmt(balanceMinor ?? 0, accCurrency, { compactCents: true })})`}
             inputMode="decimal"
             value={actualBalance}
             onChange={e => setActualBalance(e.target.value)}

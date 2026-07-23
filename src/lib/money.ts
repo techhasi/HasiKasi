@@ -34,3 +34,9 @@ export function parseAmount(input: string, opts?: { allowZero?: boolean; allowNe
 export function toLKR(minor: number, currency: Currency, usdRate: number) {
   return currency === 'USD' ? Math.round(minor * usdRate) : minor
 }
+
+/** Convert between currencies using the manual USD rate. */
+export function convertMinor(minor: number, from: Currency, to: Currency, usdRate: number): number {
+  if (from === to) return minor
+  return from === 'USD' ? Math.round(minor * usdRate) : Math.round(minor / usdRate)
+}

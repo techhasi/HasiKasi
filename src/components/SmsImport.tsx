@@ -64,19 +64,23 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
    * log an adjustment so the app's balance matches the bank exactly.
    */
   async function reconcile(p: PendingTxn, saved: Txn) {
-    if (p.balanceMinor == null || (p.balanceCurrency ?? 'LKR') !== 'LKR' || saved.type === 'transfer') return
+    if (p.balanceMinor == null || saved.type === 'transfer') return
     const s = await getSettings()
     const [accs, txns] = await Promise.all([db.accounts.toArray(), db.txns.toArray()])
+    const account = accs.find(a => a.id === saved.accountId)
+    const accCurrency = account?.currency ?? 'LKR'
+    // Only sync when the SMS balance is in the account's own currency
+    if ((p.balanceCurrency ?? 'LKR') !== accCurrency) return
     const computed = computeBalances(accs, txns, s.usdRate).get(saved.accountId) ?? 0
     const diff = p.balanceMinor - computed
-    const accName = accs.find(a => a.id === saved.accountId)?.name ?? 'Account'
+    const accName = account?.name ?? 'Account'
     if (diff === 0) {
       setInfo(`✅ ${accName} matches the bank balance`)
       return
     }
-    await addAdjustment(saved.accountId, diff, 'Synced to bank SMS balance', saved.date)
+    await addAdjustment(saved.accountId, diff, 'Synced to bank SMS balance', saved.date, accCurrency)
     setInfo(
-      `⚖️ ${accName} adjusted by ${diff > 0 ? '+' : '−'}${fmt(Math.abs(diff), 'LKR', { compactCents: true })} to match the bank`
+      `⚖️ ${accName} adjusted by ${diff > 0 ? '+' : '−'}${fmt(Math.abs(diff), accCurrency, { compactCents: true })} to match the bank`
     )
   }
 

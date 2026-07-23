@@ -1,14 +1,20 @@
-import { db, uid, type Account, type Txn } from '../db/db'
-import { toLKR } from './money'
+import { db, uid, type Account, type Currency, type Txn } from '../db/db'
+import { convertMinor } from './money'
 import { todayISO } from './dates'
 
 /** Log a balance correction: fixes the account balance without touching budget totals. */
-export async function addAdjustment(accountId: string, diffMinor: number, note: string, date = todayISO()): Promise<void> {
+export async function addAdjustment(
+  accountId: string,
+  diffMinor: number,
+  note: string,
+  date = todayISO(),
+  currency: Currency = 'LKR'
+): Promise<void> {
   await db.txns.add({
     id: uid(),
     type: diffMinor > 0 ? 'income' : 'expense',
     amountMinor: Math.abs(diffMinor),
-    currency: 'LKR',
+    currency,
     categoryId: '',
     accountId,
     date,
@@ -18,17 +24,22 @@ export async function addAdjustment(accountId: string, diffMinor: number, note: 
   })
 }
 
-/** Per-account balances in LKR minor units (opening + income − expenses ± transfers). */
+/**
+ * Per-account balances in minor units of each account's own currency
+ * (opening + income − expenses ± transfers, cross-currency txns converted).
+ */
 export function computeBalances(accounts: Account[], txns: Txn[], usdRate: number): Map<string, number> {
+  const accCurrency = new Map(accounts.map(a => [a.id, a.currency ?? 'LKR']))
   const map = new Map<string, number>()
   for (const a of accounts) map.set(a.id, a.openingMinor)
+  const inAccount = (t: Txn, accountId: string) =>
+    convertMinor(t.amountMinor, t.currency, accCurrency.get(accountId) ?? 'LKR', usdRate)
   for (const t of txns) {
-    const lkr = toLKR(t.amountMinor, t.currency, usdRate)
     if (t.type === 'transfer') {
-      map.set(t.accountId, (map.get(t.accountId) ?? 0) - lkr)
-      if (t.toAccountId) map.set(t.toAccountId, (map.get(t.toAccountId) ?? 0) + lkr)
+      map.set(t.accountId, (map.get(t.accountId) ?? 0) - inAccount(t, t.accountId))
+      if (t.toAccountId) map.set(t.toAccountId, (map.get(t.toAccountId) ?? 0) + inAccount(t, t.toAccountId))
     } else {
-      map.set(t.accountId, (map.get(t.accountId) ?? 0) + (t.type === 'expense' ? -lkr : lkr))
+      map.set(t.accountId, (map.get(t.accountId) ?? 0) + (t.type === 'expense' ? -1 : 1) * inAccount(t, t.accountId))
     }
   }
   return map

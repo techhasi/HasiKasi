@@ -73,9 +73,6 @@ export default function Accounts() {
                 <p className="text-xs text-slate-400">
                   {t?.label ?? a.type}
                   {a.numberHint && ` · •••${a.numberHint}`}
-                  {a.type === 'credit' && a.creditLimitMinor != null && (
-                    <> · avail {fmt(Math.max(0, a.creditLimitMinor + bal), 'LKR', { compactCents: true })}</>
-                  )}
                 </p>
                 {a.type === 'credit' && a.lastPaidMonth !== currentMonth() && (a.statementMinor ?? Math.max(0, -bal)) > 0 && (
                   <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
@@ -83,9 +80,16 @@ export default function Accounts() {
                   </p>
                 )}
               </div>
-              <p className={`text-base font-bold tabular-nums ${bal < 0 ? 'text-rose-500' : ''}`}>
-                {fmt(bal, 'LKR', { compactCents: true })}
-              </p>
+              <div className="text-right">
+                <p className={`text-base font-bold tabular-nums ${bal < 0 ? 'text-rose-500' : ''}`}>
+                  {fmt(bal, 'LKR', { compactCents: true })}
+                </p>
+                {a.type === 'credit' && a.creditLimitMinor != null && (
+                  <p className="text-xs font-semibold tabular-nums text-emerald-500">
+                    {fmt(Math.max(0, a.creditLimitMinor + bal), 'LKR', { compactCents: true })} available
+                  </p>
+                )}
+              </div>
             </div>
             {limitUsage !== null && (
               <div className="mt-2.5 pl-[56px]">

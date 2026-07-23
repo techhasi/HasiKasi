@@ -5,7 +5,7 @@ import { computeTotals, txnsInPeriod } from '../lib/periods'
 import { logRecurring, skipRecurring } from '../lib/recurring'
 import { computeBalances } from '../lib/balances'
 import { fmt, toLKR } from '../lib/money'
-import { friendlyDate, periodLabel, todayISO, currentMonth, endOfMonthISO, daysUntil, shortDate } from '../lib/dates'
+import { friendlyDate, periodLabel, todayISO, addDaysISO, currentMonth, endOfMonthISO, daysUntil, shortDate } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
 import SmsImport from '../components/SmsImport'
 import SearchSheet from '../components/SearchSheet'
@@ -19,7 +19,12 @@ export default function Dashboard() {
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
   const pendingCount = useLiveQuery(() => db.pending.count(), [], 0)
-  const due = useLiveQuery(() => db.recurring.where('nextDue').belowOrEqual(todayISO()).toArray(), [], [])
+  // Due now plus a 3-day advance warning
+  const due = useLiveQuery(
+    () => db.recurring.where('nextDue').belowOrEqual(addDaysISO(todayISO(), 3)).sortBy('nextDue'),
+    [],
+    []
+  )
 
   // Period navigation: index into periods array, default = active (last)
   const [periodOffset, setPeriodOffset] = useState(0) // 0 = latest
@@ -166,13 +171,20 @@ export default function Dashboard() {
             Due payments
           </h2>
           <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10">
-            {due.map(r => (
+            {due.map(r => {
+              const days = daysUntil(r.nextDue)
+              const dueLabel =
+                days < 0 ? `overdue (${friendlyDate(r.nextDue).toLowerCase()})`
+                : days === 0 ? 'due today'
+                : days === 1 ? 'due tomorrow'
+                : `due in ${days} days`
+              return (
               <div key={r.id} className="flex items-center gap-3 border-b border-amber-200/60 px-4 py-3 last:border-0 dark:border-amber-500/10">
                 <span className="text-lg">{r.kind === 'loan' ? '🏦' : '🔁'}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{r.name}</p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    {fmt(r.amountMinor, r.currency, { compactCents: true })} · due {friendlyDate(r.nextDue).toLowerCase()}
+                  <p className={`text-xs ${days < 0 ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {fmt(r.amountMinor, r.currency, { compactCents: true })} · {dueLabel}
                   </p>
                 </div>
                 <button
@@ -188,7 +200,8 @@ export default function Dashboard() {
                   Log ✓
                 </button>
               </div>
-            ))}
+              )
+            })}
           </div>
         </section>
       )}

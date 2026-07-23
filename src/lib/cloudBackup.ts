@@ -1,5 +1,5 @@
 import { db, getSettings } from '../db/db'
-import { buildBackup } from './backup'
+import { buildBackup, importBackupData } from './backup'
 import { blobToDataURL } from './image'
 import { todayISO } from './dates'
 import { getActivePeriod } from './periods'
@@ -43,6 +43,62 @@ async function uploadToGitHub(repo: string, token: string, path: string, jsonTex
     const detail = await put.text().catch(() => '')
     throw new Error(`GitHub ${put.status}: ${detail.slice(0, 120)}`)
   }
+}
+
+async function creds(): Promise<{ repo: string; token: string; headers: Record<string, string> }> {
+  const s = await getSettings()
+  if (!s.backupRepo || !s.backupToken) throw new Error('Set the repo and token first')
+  const token = s.backupToken.trim()
+  return {
+    repo: normalizeRepo(s.backupRepo),
+    token,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    }
+  }
+}
+
+export interface CloudBackupEntry {
+  name: string
+  path: string
+  sizeKb: number
+  label: string
+}
+
+/** List backup files available in the cloud repo, newest-relevant first. */
+export async function listCloudBackups(): Promise<CloudBackupEntry[]> {
+  const { repo, headers } = await creds()
+  const res = await fetch(`https://api.github.com/repos/${repo}/contents/`, { headers })
+  if (!res.ok) throw new Error(`GitHub ${res.status}`)
+  const items = (await res.json()) as { type: string; name: string; path: string; size: number }[]
+  return items
+    .filter(i => i.type === 'file' && /^hasikasi.*\.json$/i.test(i.name))
+    .map(i => {
+      const cycle = i.name.match(/^hasikasi-cycle-(\d{4}-\d{2}-\d{2})\.json$/i)
+      return {
+        name: i.name,
+        path: i.path,
+        sizeKb: Math.max(1, Math.round(i.size / 1024)),
+        label: cycle ? `Cycle snapshot · ${cycle[1]}` : 'Latest daily backup'
+      }
+    })
+    .sort((a, b) => (a.label.startsWith('Latest') ? -1 : b.label.startsWith('Latest') ? 1 : b.name.localeCompare(a.name)))
+}
+
+/** Download a cloud backup and restore it, replacing all local data. */
+export async function restoreCloudBackup(path: string): Promise<void> {
+  const { repo, token } = await creds()
+  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github.raw+json', // raw content, avoids the 1MB base64 response limit
+      'X-GitHub-Api-Version': '2022-11-28'
+    }
+  })
+  if (!res.ok) throw new Error(`GitHub ${res.status}`)
+  await importBackupData(JSON.parse(await res.text()))
 }
 
 /**

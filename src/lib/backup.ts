@@ -54,11 +54,16 @@ export async function exportBackup(): Promise<void> {
 }
 
 export async function importBackup(file: File): Promise<void> {
-  const backup = JSON.parse(await file.text()) as BackupFile
-  if (backup.app !== 'budgeting-app') throw new Error('Not a budget backup file')
+  return importBackupData(JSON.parse(await file.text()) as BackupFile)
+}
+
+export async function importBackupData(backup: BackupFile): Promise<void> {
+  if (backup.app !== 'budgeting-app') throw new Error('Not a HasiKasi backup file')
   const receipts = await Promise.all(
     backup.receipts.map(async r => ({ txnId: r.txnId, blob: await dataURLToBlob(r.dataUrl) }))
   )
+  // Device-specific secrets are not in backups — carry the current ones across
+  const current = await db.settings.get('app')
   await db.transaction(
     'rw',
     [db.txns, db.categories, db.accounts, db.periods, db.settings, db.receipts, db.recurring, db.investments],
@@ -76,6 +81,13 @@ export async function importBackup(file: File): Promise<void> {
       if (backup.recurring) await db.recurring.bulkAdd(backup.recurring as never[])
       if (backup.investments) await db.investments.bulkAdd(backup.investments as never[])
       await db.receipts.bulkAdd(receipts)
+      if (current) {
+        await db.settings.update('app', {
+          backupToken: current.backupToken,
+          lockEnabled: current.lockEnabled,
+          lockCredentialId: current.lockCredentialId
+        })
+      }
     }
   )
 }

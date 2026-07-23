@@ -5,12 +5,14 @@ import { exportBackup, importBackup } from '../lib/backup'
 import { autoBackup, normalizeRepo } from '../lib/cloudBackup'
 import { lockSupported, enrollLock, verifyLock } from '../lib/appLock'
 import GuideSheet from '../components/GuideSheet'
+import CloudRestoreSheet from '../components/CloudRestoreSheet'
 
 export default function SettingsScreen() {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
   const importRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [guideOpen, setGuideOpen] = useState(false)
+  const [cloudRestoreOpen, setCloudRestoreOpen] = useState(false)
 
   if (!settings) return null
 
@@ -173,19 +175,27 @@ export default function SettingsScreen() {
             <p className="text-xs text-slate-400">
               {settings.lastBackupDay ? `Last backup: ${settings.lastBackupDay}` : 'Not backed up yet'}
             </p>
-            <button
-              onClick={async () => {
-                setMessage('⏳ Backing up…')
-                try {
-                  setMessage((await autoBackup(true)) ?? 'Nothing to back up')
-                } catch (e) {
-                  setMessage(`❌ ${e instanceof Error ? e.message : 'Backup failed'}`)
-                }
-              }}
-              className="shrink-0 rounded-xl bg-indigo-500 px-3.5 py-2 text-sm font-semibold text-white"
-            >
-              Back up now
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button
+                onClick={() => setCloudRestoreOpen(true)}
+                className="rounded-xl bg-slate-200 px-3.5 py-2 text-sm font-semibold dark:bg-slate-700"
+              >
+                Restore
+              </button>
+              <button
+                onClick={async () => {
+                  setMessage('⏳ Backing up…')
+                  try {
+                    setMessage((await autoBackup(true)) ?? 'Nothing to back up')
+                  } catch (e) {
+                    setMessage(`❌ ${e instanceof Error ? e.message : 'Backup failed'}`)
+                  }
+                }}
+                className="rounded-xl bg-indigo-500 px-3.5 py-2 text-sm font-semibold text-white"
+              >
+                Back up now
+              </button>
+            </div>
           </div>
           <details className="mt-3">
             <summary className="cursor-pointer text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -236,6 +246,7 @@ export default function SettingsScreen() {
       </p>
 
       {guideOpen && <GuideSheet onClose={() => setGuideOpen(false)} />}
+      {cloudRestoreOpen && <CloudRestoreSheet onClose={() => setCloudRestoreOpen(false)} />}
     </div>
   )
 }

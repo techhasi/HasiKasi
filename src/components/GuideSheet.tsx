@@ -51,7 +51,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
       'Your data lives only on this device. Two safety nets:',
       '1. Settings → Export backup: downloads everything as a JSON file (keep one in iCloud Files).',
       '2. Cloud backup: connects a private GitHub repo — a daily backup plus one snapshot per budget month, automatic when you open the app.',
-      'Restore backup replaces all data with the chosen file.'
+      'Restore: pick a local file (Data → Restore backup) or pull straight from the cloud (Cloud backup → Restore). Either replaces all current data; your backup token and Face ID lock stay untouched.'
     ]
   },
   {

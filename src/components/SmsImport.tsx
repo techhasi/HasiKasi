@@ -71,8 +71,18 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
     const accCurrency = account?.currency ?? 'LKR'
     // Only sync when the SMS balance is in the account's own currency
     if ((p.balanceCurrency ?? 'LKR') !== accCurrency) return
+    // Credit cards state AVAILABLE CREDIT (limit − owed), not the balance.
+    // Convert to the owed balance via the limit; without a limit it's ambiguous — don't sync.
+    let target = p.balanceMinor
+    if (account?.type === 'credit') {
+      if (account.creditLimitMinor == null) {
+        setInfo('ℹ️ Set this card\'s credit limit to enable balance sync from SMS')
+        return
+      }
+      target = p.balanceMinor - account.creditLimitMinor
+    }
     const computed = computeBalances(accs, txns, s.usdRate).get(saved.accountId) ?? 0
-    const diff = p.balanceMinor - computed
+    const diff = target - computed
     const accName = account?.name ?? 'Account'
     if (diff === 0) {
       setInfo(`✅ ${accName} matches the bank balance`)

@@ -6,22 +6,25 @@ import LockScreen from './components/LockScreen'
 import Dashboard from './screens/Dashboard'
 import Stats from './screens/Stats'
 import Accounts from './screens/Accounts'
+import Tasks from './screens/Tasks'
 import SettingsScreen from './screens/Settings'
 import AddSheet from './components/AddSheet'
 
-type Tab = 'home' | 'stats' | 'accounts' | 'settings'
+type Tab = 'home' | 'stats' | 'tasks' | 'accounts' | 'settings'
 
+// Settings is reached via the gear on Home, keeping the bar uncluttered
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'home', label: 'Home', icon: '🏠' },
   { id: 'stats', label: 'Stats', icon: '📊' },
-  { id: 'accounts', label: 'Accounts', icon: '💳' },
-  { id: 'settings', label: 'Settings', icon: '⚙️' }
+  { id: 'tasks', label: 'Tasks', icon: '✅' },
+  { id: 'accounts', label: 'Accounts', icon: '💳' }
 ]
 
 export default function App() {
   const [ready, setReady] = useState(false)
   const [tab, setTab] = useState<Tab>('home')
   const [addOpen, setAddOpen] = useState(false)
+  const [taskAddOpen, setTaskAddOpen] = useState(false)
   const [locked, setLocked] = useState(false)
   const [lockCredentialId, setLockCredentialId] = useState<string | null>(null)
 
@@ -85,8 +88,9 @@ export default function App() {
   return (
     <div className="mx-auto max-w-lg min-h-dvh pb-28">
       <main className="pt-safe">
-        {tab === 'home' && <Dashboard />}
+        {tab === 'home' && <Dashboard onOpenSettings={() => setTab('settings')} />}
         {tab === 'stats' && <Stats />}
+        {tab === 'tasks' && <Tasks addOpen={taskAddOpen} onAddClose={() => setTaskAddOpen(false)} />}
         {tab === 'accounts' && <Accounts />}
         {tab === 'settings' && <SettingsScreen />}
       </main>
@@ -97,10 +101,10 @@ export default function App() {
           {TABS.slice(0, 2).map(t => (
             <TabButton key={t.id} tab={t} active={tab === t.id} onClick={() => setTab(t.id)} />
           ))}
-          {/* Add button */}
+          {/* Add button — context aware: task on the Tasks tab, transaction elsewhere */}
           <button
-            onClick={() => setAddOpen(true)}
-            aria-label="Add transaction"
+            onClick={() => (tab === 'tasks' ? setTaskAddOpen(true) : setAddOpen(true))}
+            aria-label={tab === 'tasks' ? 'Add task' : 'Add transaction'}
             className="flex h-14 w-14 shrink-0 -translate-y-4 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-3xl font-light text-white shadow-lg shadow-indigo-500/40 transition-transform active:scale-90"
           >
             +

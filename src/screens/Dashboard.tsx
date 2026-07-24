@@ -12,7 +12,7 @@ import SearchSheet from '../components/SearchSheet'
 import AddSheet from '../components/AddSheet'
 import type { Account } from '../db/db'
 
-export default function Dashboard() {
+export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => void }) {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
   const periods = useLiveQuery(() => db.periods.orderBy('startDate').toArray(), [], [])
   const txns = useLiveQuery(() => db.txns.toArray(), [], [])
@@ -114,6 +114,13 @@ export default function Dashboard() {
               {pendingCount}
             </span>
           )}
+        </button>
+        <button
+          onClick={onOpenSettings}
+          aria-label="Settings"
+          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-slate-800/60"
+        >
+          ⚙️
         </button>
         </div>
       </header>

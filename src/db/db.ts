@@ -92,6 +92,47 @@ export interface Settings {
   /** Face ID app lock (WebAuthn platform credential), device-specific */
   lockEnabled?: boolean
   lockCredentialId?: string
+  /** Google Calendar OAuth client id (public), for the tasks calendar overlay */
+  gcalClientId?: string
+}
+
+export type Priority = 'none' | 'low' | 'medium' | 'high'
+export type Recurrence = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly'
+
+export interface Subtask {
+  id: string
+  title: string
+  done: boolean
+}
+
+/** A to-do task in the Tasks section. */
+export interface Task {
+  id: string
+  title: string
+  notes: string
+  done: boolean
+  completedAt?: number
+  /** ISO date YYYY-MM-DD */
+  dueDate?: string
+  /** HH:MM (24h) */
+  dueTime?: string
+  priority: Priority
+  /** owning list/project, or null for the inbox */
+  listId: string | null
+  subtasks: Subtask[]
+  recurrence: Recurrence
+  /** manual sort order within a day/list */
+  order: number
+  createdAt: number
+}
+
+/** A task list / project. */
+export interface TaskList {
+  id: string
+  name: string
+  emoji: string
+  color: string
+  order: number
 }
 
 /** A repeating payment: subscription/bill, or a loan with payoff tracking. */
@@ -154,6 +195,8 @@ export const db = new Dexie('budget-app') as Dexie & {
   pending: EntityTable<PendingTxn, 'id'>
   recurring: EntityTable<Recurring, 'id'>
   investments: EntityTable<Investment, 'id'>
+  tasks: EntityTable<Task, 'id'>
+  taskLists: EntityTable<TaskList, 'id'>
 }
 
 db.version(1).stores({
@@ -172,6 +215,11 @@ db.version(2).stores({
 db.version(3).stores({
   recurring: 'id, nextDue',
   investments: 'id'
+})
+
+db.version(4).stores({
+  tasks: 'id, listId, dueDate, done, order',
+  taskLists: 'id, order'
 })
 
 export const uid = () => crypto.randomUUID()
@@ -209,12 +257,19 @@ const DEFAULT_INCOME_CATEGORIES: Omit<Category, 'id'>[] = [
 
 /** Seed defaults on first run; safe to call every launch. */
 export async function initDb() {
-  await db.transaction('rw', [db.categories, db.accounts, db.settings, db.periods], async () => {
+  await db.transaction('rw', [db.categories, db.accounts, db.settings, db.periods, db.taskLists], async () => {
     const existing = await db.settings.get('app')
     if (!existing) {
       await db.settings.add(DEFAULT_SETTINGS)
     } else if (!existing.backupRepo) {
       await db.settings.update('app', { backupRepo: DEFAULT_SETTINGS.backupRepo })
+    }
+    if ((await db.taskLists.count()) === 0) {
+      await db.taskLists.bulkAdd([
+        { id: uid(), name: 'Personal', emoji: '🏡', color: '#6366f1', order: 0 },
+        { id: uid(), name: 'Work', emoji: '💼', color: '#0ea5e9', order: 1 },
+        { id: uid(), name: 'Shopping', emoji: '🛒', color: '#f59e0b', order: 2 }
+      ])
     }
     if ((await db.categories.count()) === 0) {
       await db.categories.bulkAdd(

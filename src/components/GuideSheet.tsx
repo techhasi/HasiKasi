@@ -73,6 +73,14 @@ const SECTIONS: { title: string; body: string[] }[] = [
     ]
   },
   {
+    title: '✅ Tasks & calendar',
+    body: [
+      'The Tasks tab is a full to-do list: add tasks with due dates, times, priorities, lists, checklists and repeat rules. Tap the checkbox to complete (repeating tasks roll to their next date).',
+      'Views: Today (overdue + due today), Upcoming, All, and a Calendar month view. Filter by list, or search.',
+      'Calendar can overlay your Google Calendar (read-only) — add a Google client id in Settings → Google Calendar, then tap Connect on the calendar view.'
+    ]
+  },
+  {
     title: '⚠️ Important',
     body: [
       'Always open HasiKasi from the home-screen icon. Safari tabs keep a separate copy of data.',

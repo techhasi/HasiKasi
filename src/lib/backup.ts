@@ -12,6 +12,8 @@ interface BackupFile {
   settings: unknown[]
   recurring?: unknown[]
   investments?: unknown[]
+  tasks?: unknown[]
+  taskLists?: unknown[]
   receipts: { txnId: string; dataUrl: string }[]
 }
 
@@ -36,6 +38,8 @@ export async function buildBackup(): Promise<BackupFile> {
     settings,
     recurring: await db.recurring.toArray(),
     investments: await db.investments.toArray(),
+    tasks: await db.tasks.toArray(),
+    taskLists: await db.taskLists.toArray(),
     receipts: await Promise.all(
       receipts.map(async r => ({ txnId: r.txnId, dataUrl: await blobToDataURL(r.blob) }))
     )
@@ -66,12 +70,12 @@ export async function importBackupData(backup: BackupFile): Promise<void> {
   const current = await db.settings.get('app')
   await db.transaction(
     'rw',
-    [db.txns, db.categories, db.accounts, db.periods, db.settings, db.receipts, db.recurring, db.investments],
+    [db.txns, db.categories, db.accounts, db.periods, db.settings, db.receipts, db.recurring, db.investments, db.tasks, db.taskLists],
     async () => {
       await Promise.all([
         db.txns.clear(), db.categories.clear(), db.accounts.clear(),
         db.periods.clear(), db.settings.clear(), db.receipts.clear(),
-        db.recurring.clear(), db.investments.clear()
+        db.recurring.clear(), db.investments.clear(), db.tasks.clear(), db.taskLists.clear()
       ])
       await db.txns.bulkAdd(backup.txns as never[])
       await db.categories.bulkAdd(backup.categories as never[])
@@ -80,6 +84,8 @@ export async function importBackupData(backup: BackupFile): Promise<void> {
       await db.settings.bulkAdd(backup.settings as never[])
       if (backup.recurring) await db.recurring.bulkAdd(backup.recurring as never[])
       if (backup.investments) await db.investments.bulkAdd(backup.investments as never[])
+      if (backup.tasks) await db.tasks.bulkAdd(backup.tasks as never[])
+      if (backup.taskLists) await db.taskLists.bulkAdd(backup.taskLists as never[])
       await db.receipts.bulkAdd(receipts)
       if (current) {
         await db.settings.update('app', {

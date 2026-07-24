@@ -151,6 +151,40 @@ export default function SettingsScreen() {
         </div>
       </Section>
 
+      <Section title="Google Calendar">
+        <div className="px-4 py-3.5">
+          <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Overlay your Google Calendar events on the Tasks → Calendar view. Read-only, and the browser sign-in lasts
+            about an hour, so you tap Connect once per session.
+          </p>
+          <input
+            placeholder="Google OAuth client id"
+            defaultValue={settings.gcalClientId ?? ''}
+            onBlur={e => update({ gcalClientId: e.target.value.trim() || undefined })}
+            className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold text-slate-500 dark:text-slate-400">
+              One-time setup guide
+            </summary>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              <li>Go to <b>console.cloud.google.com</b> → create a project</li>
+              <li><b>APIs &amp; Services → Library</b> → enable <b>Google Calendar API</b></li>
+              <li>
+                <b>OAuth consent screen</b> → External → add yourself as a <b>Test user</b>, add the scope
+                <b> calendar.readonly</b>
+              </li>
+              <li>
+                <b>Credentials → Create → OAuth client ID → Web application</b>. Under <b>Authorised JavaScript origins</b>
+                add <b>https://techhasi.github.io</b>
+              </li>
+              <li>Copy the <b>Client ID</b> into the box above, then open Tasks → Calendar → Connect</li>
+            </ol>
+            <p className="mt-1.5 text-xs text-slate-400">The client id is public; no secret is stored.</p>
+          </details>
+        </div>
+      </Section>
+
       <Section title="Cloud backup">
         <div className="px-4 py-3.5">
           <p className="mb-1 text-sm font-medium">Automatic off-phone backups</p>

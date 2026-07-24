@@ -79,9 +79,9 @@ export default function Accounts() {
                   {accCur !== 'LKR' && ` · ${accCur}`}
                   {a.numberHint && ` · •••${a.numberHint}`}
                 </p>
-                {a.type === 'credit' && a.lastPaidMonth !== currentMonth() && (a.statementMinor ?? Math.max(0, -bal)) > 0 && (
+                {a.type === 'credit' && a.lastPaidMonth !== currentMonth() && -bal > 0 && (
                   <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                    {fmt(a.statementMinor ?? -bal, accCur, { compactCents: true })} due by {shortDate(endOfMonthISO())}
+                    {fmt(-bal, accCur, { compactCents: true })} due by {shortDate(endOfMonthISO())}
                   </p>
                 )}
               </div>
@@ -225,7 +225,6 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
   const [color, setColor] = useState(edit?.color ?? ACCOUNT_COLORS[1])
   const [opening, setOpening] = useState(edit && edit.openingMinor ? (edit.openingMinor / 100).toFixed(2) : '')
   const [numberHint, setNumberHint] = useState(edit?.numberHint ?? '')
-  const [statement, setStatement] = useState(edit?.statementMinor ? (edit.statementMinor / 100).toFixed(2) : '')
   const [creditLimit, setCreditLimit] = useState(edit?.creditLimitMinor ? (edit.creditLimitMinor / 100).toFixed(2) : '')
   const [actualBalance, setActualBalance] = useState('')
   const [error, setError] = useState('')
@@ -244,15 +243,11 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
       numberHint: hint || undefined
     }
     if (type === 'credit') {
-      // 0 clears the statement (nothing due)
-      const statementMinor = statement.trim() ? parseAmount(statement, { allowZero: true }) : undefined
-      if (statement.trim() && statementMinor === null) return setError('Invalid due amount')
-      fields.statementMinor = statementMinor || undefined
-      // A newly entered statement means a new billing cycle — show the reminder again
-      if (statementMinor && statementMinor !== edit?.statementMinor) fields.lastPaidMonth = undefined
       const limitMinor = creditLimit.trim() ? parseAmount(creditLimit) : undefined
       if (creditLimit.trim() && !limitMinor) return setError('Invalid credit limit')
       fields.creditLimitMinor = limitMinor ?? undefined
+      // The due tracks the live outstanding balance; clear any old fixed statement
+      fields.statementMinor = undefined
     } else {
       fields.statementMinor = undefined
       fields.creditLimitMinor = undefined
@@ -349,23 +344,15 @@ function AccountSheet({ edit, balanceMinor, onClose }: { edit?: Account; balance
       {type === 'credit' && (
         <>
           <input
-            placeholder="This month's due amount (Rs, from statement)"
-            inputMode="decimal"
-            value={statement}
-            onChange={e => setStatement(e.target.value)}
-            className="mb-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
-          />
-          <p className="mb-3 text-xs text-slate-400">
-            Due by the last day of the month. Leave empty to use the card's outstanding balance.
-          </p>
-          <input
             placeholder="Credit limit (Rs, optional)"
             inputMode="decimal"
             value={creditLimit}
             onChange={e => setCreditLimit(e.target.value)}
             className="mb-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
-          <p className="mb-4 text-xs text-slate-400">Used to show your remaining available credit.</p>
+          <p className="mb-4 text-xs text-slate-400">
+            Shows remaining available credit. The amount due tracks your outstanding balance live and is due by month-end.
+          </p>
         </>
       )}
       {edit && (

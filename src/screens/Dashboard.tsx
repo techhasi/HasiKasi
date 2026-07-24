@@ -57,7 +57,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
       .sort((a, b) => b.spent / b.budget - a.spent / a.budget)
   }, [txns, period, categories, settings?.usdRate])
 
-  // Credit card dues: statement amount (or outstanding balance), due end of month
+  // Credit card dues: live outstanding balance, due end of month
   const cardsDue = useMemo(() => {
     const month = currentMonth()
     const balances = computeBalances(accounts, txns, settings?.usdRate ?? 300)
@@ -66,7 +66,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
       .map(a => ({
         account: a,
         currency: a.currency ?? ('LKR' as const),
-        dueMinor: a.statementMinor ?? Math.max(0, -(balances.get(a.id) ?? 0))
+        dueMinor: Math.max(0, -(balances.get(a.id) ?? 0))
       }))
       .filter(c => c.dueMinor > 0)
   }, [accounts, txns, settings?.usdRate])

@@ -5,6 +5,7 @@ import { parseSms } from '../lib/smsParser'
 import { fmt } from '../lib/money'
 import { friendlyDate } from '../lib/dates'
 import { computeBalances, addAdjustment } from '../lib/balances'
+import { learnMerchant, suggestCategory } from '../lib/categories'
 import Sheet from './Sheet'
 import AddSheet from './AddSheet'
 
@@ -14,6 +15,12 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState('')
   const [info, setInfo] = useState('')
   const [adding, setAdding] = useState<PendingTxn | null>(null)
+  const [suggested, setSuggested] = useState<string | undefined>()
+
+  async function startAdd(p: PendingTxn) {
+    setSuggested(await suggestCategory(p.merchant, p.type))
+    setAdding(p)
+  }
 
   /** Match an SMS account hint (last digits) to a configured account. */
   function matchAccount(hint: string | null): string | undefined {
@@ -216,7 +223,7 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
                     Dismiss
                   </button>
                   <button
-                    onClick={() => setAdding(p)}
+                    onClick={() => startAdd(p)}
                     className="flex-1 rounded-xl bg-indigo-500 py-2 text-sm font-semibold text-white"
                   >
                     Add ✓
@@ -236,10 +243,12 @@ export default function SmsImport({ onClose }: { onClose: () => void }) {
             currency: adding.currency,
             date: adding.date,
             note: adding.merchant,
-            accountId: matchAccount(adding.accountHint)
+            accountId: matchAccount(adding.accountHint),
+            categoryId: suggested
           }}
           onSaved={async saved => {
             await db.pending.delete(adding.id)
+            if (saved.type !== 'transfer') await learnMerchant(adding.merchant, saved.categoryId)
             await reconcile(adding, saved)
           }}
           onClose={() => setAdding(null)}

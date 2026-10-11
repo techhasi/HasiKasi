@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Txn, type TxnType } from '../db/db'
 import { fmt } from '../lib/money'
 import { friendlyDate } from '../lib/dates'
+import { sortCats } from '../lib/categories'
 import Sheet from './Sheet'
 import TxnDetail from './TxnDetail'
 
@@ -92,7 +93,7 @@ export default function SearchSheet({ onClose }: { onClose: () => void }) {
           >
             Any category
           </button>
-          {categories
+          {sortCats(categories)
             .filter(c => typeFilter === 'all' || c.kind === typeFilter)
             .map(c => (
               <button

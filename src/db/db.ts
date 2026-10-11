@@ -15,6 +15,8 @@ export interface Category {
   builtin?: boolean
   /** expense categories only: monthly budget in LKR minor units (unset = no budget) */
   budgetMinor?: number
+  /** manual sort position within its kind (unset = seed order) */
+  order?: number
 }
 
 export type AccountType = 'cash' | 'bank' | 'debit' | 'credit'
@@ -104,6 +106,10 @@ export interface Settings {
   defaultIncomeAccountId?: string
   /** Twelve Data API key (free) for gold + stock live prices; crypto is keyless */
   marketApiKey?: string
+  /** Google AI Studio (Gemini) API key for AI insights; device-only, never backed up */
+  geminiApiKey?: string
+  /** Gemini model id (default: gemini-flash-latest) */
+  geminiModel?: string
 }
 
 export type Priority = 'none' | 'low' | 'medium' | 'high'
@@ -248,6 +254,20 @@ export interface PendingTxn {
   createdAt: number
 }
 
+/** Learned bank-SMS merchant -> category, so repeat merchants are pre-categorised. */
+export interface MerchantRule {
+  /** normalised merchant name */
+  merchant: string
+  categoryId: string
+}
+
+/** Safety copy of all data taken right before a restore, so it can be undone. */
+export interface Snapshot {
+  id: string
+  createdAt: number
+  json: Blob
+}
+
 export const db = new Dexie('budget-app') as Dexie & {
   txns: EntityTable<Txn, 'id'>
   categories: EntityTable<Category, 'id'>
@@ -261,6 +281,8 @@ export const db = new Dexie('budget-app') as Dexie & {
   tasks: EntityTable<Task, 'id'>
   taskLists: EntityTable<TaskList, 'id'>
   reminders: EntityTable<Reminder, 'id'>
+  merchantRules: EntityTable<MerchantRule, 'merchant'>
+  snapshots: EntityTable<Snapshot, 'id'>
 }
 
 db.version(1).stores({
@@ -290,6 +312,11 @@ db.version(5).stores({
   reminders: 'id, date, done'
 })
 
+db.version(6).stores({
+  merchantRules: 'merchant',
+  snapshots: 'id'
+})
+
 export const uid = () => crypto.randomUUID()
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -303,7 +330,7 @@ export const DEFAULT_SETTINGS: Settings = {
   backupRepo: 'techhasi/hasikasi-backups'
 }
 
-const DEFAULT_EXPENSE_CATEGORIES: Omit<Category, 'id'>[] = [
+export const DEFAULT_EXPENSE_CATEGORIES: Omit<Category, 'id'>[] = [
   { name: 'Food', emoji: '🍔', color: '#f97316', kind: 'expense', builtin: true },
   { name: 'Groceries', emoji: '🛒', color: '#84cc16', kind: 'expense', builtin: true },
   { name: 'Transport', emoji: '🚕', color: '#eab308', kind: 'expense', builtin: true },
@@ -315,7 +342,7 @@ const DEFAULT_EXPENSE_CATEGORIES: Omit<Category, 'id'>[] = [
   { name: 'Other', emoji: '📦', color: '#64748b', kind: 'expense', builtin: true }
 ]
 
-const DEFAULT_INCOME_CATEGORIES: Omit<Category, 'id'>[] = [
+export const DEFAULT_INCOME_CATEGORIES: Omit<Category, 'id'>[] = [
   { name: 'Salary', emoji: '💼', color: '#10b981', kind: 'income', builtin: true },
   { name: 'Freelance', emoji: '💻', color: '#6366f1', kind: 'income', builtin: true },
   { name: 'Interest', emoji: '🏦', color: '#0ea5e9', kind: 'income', builtin: true },
@@ -341,7 +368,7 @@ export async function initDb() {
     }
     if ((await db.categories.count()) === 0) {
       await db.categories.bulkAdd(
-        [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES].map(c => ({ ...c, id: uid() }))
+        [DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES].flatMap(list => list.map((c, i) => ({ ...c, id: uid(), order: i })))
       )
     }
     if ((await db.accounts.count()) === 0) {

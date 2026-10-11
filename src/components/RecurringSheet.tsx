@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, DEFAULT_SETTINGS, type Currency, type Recurring } from '../db/db'
 import { parseAmount, fmt, CURRENCY_SYMBOL } from '../lib/money'
 import { firstDue, logRecurring, payOffLoan, loanRemaining } from '../lib/recurring'
+import { sortCats } from '../lib/categories'
 import Sheet from './Sheet'
 
 const INTERVALS = [
@@ -15,7 +16,7 @@ const INTERVALS = [
 /** Add or edit a recurring payment (subscription/bill or loan). */
 export default function RecurringSheet({ edit, onClose }: { edit?: Recurring; onClose: () => void }) {
   const settings = useLiveQuery(() => db.settings.get('app'), [], DEFAULT_SETTINGS)
-  const categories = useLiveQuery(() => db.categories.where('kind').equals('expense').toArray(), [], [])
+  const categories = useLiveQuery(async () => sortCats(await db.categories.where('kind').equals('expense').toArray()), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
 
   const [name, setName] = useState(edit?.name ?? '')

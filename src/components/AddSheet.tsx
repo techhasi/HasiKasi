@@ -5,6 +5,7 @@ import { parseAmount, CURRENCY_SYMBOL, fmt } from '../lib/money'
 import { todayISO, addDaysISO, friendlyDate } from '../lib/dates'
 import { compressImage } from '../lib/image'
 import { startNewPeriod } from '../lib/periods'
+import { sortCats } from '../lib/categories'
 import Sheet from './Sheet'
 
 const CATEGORY_COLORS = ['#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#ef4444', '#64748b']
@@ -17,6 +18,7 @@ export interface AddInitial {
   note?: string
   accountId?: string
   toAccountId?: string
+  categoryId?: string
 }
 
 const TYPE_META: Record<TxnType, { label: string; active: string; button: string; saveLabel: string }> = {
@@ -60,7 +62,7 @@ export default function AddSheet({
   const [type, setType] = useState<TxnType>(edit?.type ?? initial?.type ?? 'expense')
   const [amount, setAmount] = useState(edit ? (edit.amountMinor / 100).toFixed(2) : (initial?.amount ?? ''))
   const [currency, setCurrency] = useState<Currency | null>(edit?.currency ?? initial?.currency ?? null)
-  const [categoryId, setCategoryId] = useState<string | null>(edit?.categoryId || null)
+  const [categoryId, setCategoryId] = useState<string | null>(edit?.categoryId || initial?.categoryId || null)
   const [accountId, setAccountId] = useState<string | null>(edit?.accountId ?? initial?.accountId ?? null)
   const [toAccountId, setToAccountId] = useState<string | null>(edit?.toAccountId ?? initial?.toAccountId ?? null)
   const [date, setDate] = useState(edit?.date ?? initial?.date ?? todayISO())
@@ -80,7 +82,7 @@ export default function AddSheet({
 
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const cats = useMemo(() => categories.filter(c => c.kind === type), [categories, type])
+  const cats = useMemo(() => sortCats(categories.filter(c => c.kind === type)), [categories, type])
   const selectedCat = cats.find(c => c.id === categoryId)
   // Fall back to the configured primary account for the current type
   const preferredDefault = type === 'income' ? settings?.defaultIncomeAccountId : settings?.defaultExpenseAccountId
@@ -99,7 +101,7 @@ export default function AddSheet({
     const name = newCatName.trim()
     if (!name || type === 'transfer') return
     const id = uid()
-    await db.categories.add({ id, name, emoji: newCatEmoji || '✨', color: newCatColor, kind: type })
+    await db.categories.add({ id, name, emoji: newCatEmoji || '✨', color: newCatColor, kind: type, order: cats.length })
     setCategoryId(id)
     setNewCatOpen(false)
     setNewCatName('')

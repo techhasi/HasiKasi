@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, initDb, getSettings, DEFAULT_SETTINGS } from './db/db'
 import { autoBackup } from './lib/cloudBackup'
+import { ensureCategoryOrder, repairOrphans } from './lib/categories'
 import LockScreen from './components/LockScreen'
 import Dashboard from './screens/Dashboard'
 import Stats from './screens/Stats'
@@ -30,6 +31,7 @@ export default function App() {
 
   useEffect(() => {
     initDb().then(async () => {
+      ensureCategoryOrder().then(repairOrphans).catch(e => console.warn('category repair failed:', e))
       // Decide the lock state before first paint so content never flashes
       const s = await getSettings()
       if (s.lockEnabled && s.lockCredentialId) {

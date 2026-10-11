@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Account, type Settings } from '../db/db'
-import { exportBackup, importBackup } from '../lib/backup'
+import { exportBackup, getSnapshotInfo, readBackupFile, importBackupData, summarizeBackup, undoLastRestore } from '../lib/backup'
 import { autoBackup, normalizeRepo } from '../lib/cloudBackup'
 import { lockSupported, enrollLock, verifyLock } from '../lib/appLock'
 import { ENV_GCAL_CLIENT_ID, ENV_MARKET_KEY } from '../lib/env'
+import { DEFAULT_GEMINI_MODEL } from '../lib/ai'
 import GuideSheet from '../components/GuideSheet'
+import CategoriesSheet from '../components/CategoriesSheet'
 import CloudRestoreSheet from '../components/CloudRestoreSheet'
 
 export default function SettingsScreen() {
@@ -14,9 +16,22 @@ export default function SettingsScreen() {
   const importRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [guideOpen, setGuideOpen] = useState(false)
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [cloudRestoreOpen, setCloudRestoreOpen] = useState(false)
 
+  const snapshot = useLiveQuery(() => getSnapshotInfo(), [], undefined)
+
   if (!settings) return null
+
+  async function onUndo() {
+    if (!window.confirm('Undo the last restore and bring back the data you had before it?')) return
+    try {
+      await undoLastRestore()
+      setMessage('✅ Restore undone')
+    } catch (e) {
+      setMessage(`❌ ${e instanceof Error ? e.message : 'Undo failed'}`)
+    }
+  }
 
   async function update(patch: Partial<Settings>) {
     await db.settings.update('app', patch)
@@ -24,8 +39,17 @@ export default function SettingsScreen() {
 
   async function onImport(file: File) {
     try {
-      await importBackup(file)
-      setMessage('✅ Backup restored')
+      const backup = await readBackupFile(file)
+      const sum = summarizeBackup(backup)
+      const now = await db.txns.count()
+      const ok = window.confirm(
+        `Restore this backup?\n\nBackup: ${sum.txns} transactions, ${sum.accounts} accounts` +
+          (sum.exportedAt ? ` (exported ${sum.exportedAt.slice(0, 10)})` : '') +
+          `\nCurrent: ${now} transactions\n\nCurrent data will be replaced. A safety copy is kept so you can undo.`
+      )
+      if (!ok) return
+      await importBackupData(backup)
+      setMessage('✅ Backup restored — you can undo it below')
     } catch (e) {
       setMessage(`❌ ${e instanceof Error ? e.message : 'Import failed'}`)
     }
@@ -107,6 +131,38 @@ export default function SettingsScreen() {
         <Row label="USD rate" hint="LKR per 1 USD, used for totals">
           <UsdRateInput value={settings.usdRate} onSave={n => update({ usdRate: n })} />
         </Row>
+      </Section>
+
+      <Section title="Categories">
+        <Row label="Manage categories" hint="Add, rename, recolour or delete">
+          <button onClick={() => setCategoriesOpen(true)} className="rounded-xl bg-indigo-500 px-3.5 py-2 text-sm font-semibold text-white">
+            Edit
+          </button>
+        </Row>
+      </Section>
+
+      <Section title="AI insights (Gemini)">
+        <div className="px-4 py-3.5">
+          <p className="mb-1 text-sm font-medium">Free spending analysis</p>
+          <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Create a free key at <b>aistudio.google.com/apikey</b> (no billing needed). A Gemini Plus / AI Plus subscription
+            doesn't include API access, but the free API tier is enough for this. The key stays on this device and is never
+            included in backups.
+          </p>
+          <SyncedInput
+            type="password"
+            placeholder="Gemini API key"
+            value={settings.geminiApiKey ?? ''}
+            onCommit={v => update({ geminiApiKey: v.trim() || undefined })}
+            className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+          <SyncedInput
+            placeholder={`Model (default ${DEFAULT_GEMINI_MODEL})`}
+            value={settings.geminiModel ?? ''}
+            onCommit={v => update({ geminiModel: v.trim() || undefined })}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+          />
+        </div>
       </Section>
 
       <Section title="Reminders">
@@ -315,6 +371,13 @@ export default function SettingsScreen() {
             Import
           </button>
         </Row>
+        {snapshot && (
+          <Row label="Undo last restore" hint={`Safety copy from ${new Date(snapshot.createdAt).toLocaleString()}`}>
+            <button onClick={onUndo} className="rounded-xl bg-amber-500 px-3.5 py-2 text-sm font-semibold text-white">
+              Undo
+            </button>
+          </Row>
+        )}
       </Section>
 
       {message && <p className="mb-4 text-center text-sm font-medium">{message}</p>}
@@ -323,6 +386,7 @@ export default function SettingsScreen() {
         HasiKasi · local-first · your data never leaves this device
       </p>
 
+      {categoriesOpen && <CategoriesSheet onClose={() => setCategoriesOpen(false)} />}
       {guideOpen && <GuideSheet onClose={() => setGuideOpen(false)} />}
       {cloudRestoreOpen && <CloudRestoreSheet onClose={() => setCloudRestoreOpen(false)} />}
     </div>

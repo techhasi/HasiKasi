@@ -1,6 +1,6 @@
 import { db, uid, getSettings, type Period, type Txn } from '../db/db'
 import { addDaysISO } from './dates'
-import { toLKR } from './money'
+import { toLKR, spendMinor } from './money'
 
 export async function getActivePeriod(): Promise<Period | undefined> {
   const all = await db.periods.orderBy('startDate').toArray()
@@ -28,7 +28,7 @@ export function computeTotals(txns: Txn[], period: Period, usdRate: number): Per
   for (const t of txnsInPeriod(txns, period)) {
     if (t.type === 'transfer') continue // moves money between accounts, not in/out
     if (t.adjustment) continue // balance corrections don't count as spending/earning
-    const lkr = toLKR(t.amountMinor, t.currency, usdRate)
+    const lkr = toLKR(spendMinor(t), t.currency, usdRate)
     if (t.type === 'expense') spending += lkr
     else earning += lkr
   }

@@ -64,6 +64,26 @@ export interface Txn {
   startsPeriod?: boolean
   /** balance correction: affects account balances but not spending/earning totals */
   adjustment?: boolean
+  /** expenses only: the part that is really mine (amountMinor minus what friends owe). Unset = all of it.
+   *  Budgets, stats and totals use this; account balances always use the full amountMinor. */
+  ownShareMinor?: number
+  /** repayment from a friend: balance-only entry (like an adjustment) linked to the receivable it settles */
+  receivableId?: string
+  createdAt: number
+}
+
+/** Money friends owe me for part of an expense (e.g. a gathering paid on my card). */
+export interface Receivable {
+  id: string
+  /** the expense this came from */
+  txnId: string
+  /** who owes it; empty = "Friends" */
+  person: string
+  /** amount owed, minor units of `currency` */
+  amountMinor: number
+  currency: Currency
+  /** amount given up on; it moves back into my own share of the expense */
+  writtenOffMinor?: number
   createdAt: number
 }
 
@@ -282,6 +302,7 @@ export const db = new Dexie('budget-app') as Dexie & {
   taskLists: EntityTable<TaskList, 'id'>
   reminders: EntityTable<Reminder, 'id'>
   merchantRules: EntityTable<MerchantRule, 'merchant'>
+  receivables: EntityTable<Receivable, 'id'>
   snapshots: EntityTable<Snapshot, 'id'>
 }
 
@@ -315,6 +336,11 @@ db.version(5).stores({
 db.version(6).stores({
   merchantRules: 'merchant',
   snapshots: 'id'
+})
+
+db.version(7).stores({
+  txns: 'id, date, type, categoryId, accountId, receivableId',
+  receivables: 'id, txnId'
 })
 
 export const uid = () => crypto.randomUUID()

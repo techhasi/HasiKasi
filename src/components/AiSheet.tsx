@@ -43,6 +43,7 @@ export default function AiSheet({ periodIdx, onClose }: { periodIdx: number; onC
   const txns = useLiveQuery(() => db.txns.toArray(), [], [])
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const recurring = useLiveQuery(() => db.recurring.toArray(), [], [])
+  const receivables = useLiveQuery(() => db.receivables.toArray(), [], [])
 
   const [report, setReport] = useState<Cached | null>(null)
   const [busy, setBusy] = useState(false)
@@ -52,7 +53,7 @@ export default function AiSheet({ periodIdx, onClose }: { periodIdx: number; onC
   const [asking, setAsking] = useState(false)
 
   const apiKey = settings?.geminiApiKey
-  const facts = computeFacts({ periods, periodIdx, txns, categories, recurring, usdRate: settings?.usdRate ?? 300 })
+  const facts = computeFacts({ periods, periodIdx, txns, categories, recurring, receivables, usdRate: settings?.usdRate ?? 300 })
   const key = facts ? cacheKey(facts) : ''
 
   // Show a previous analysis for the same data instantly (saves free-tier quota)

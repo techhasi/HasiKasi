@@ -1,4 +1,4 @@
-import type { Currency } from '../db/db'
+import type { Currency, Txn } from '../db/db'
 
 export const CURRENCY_SYMBOL: Record<Currency, string> = { LKR: 'Rs', USD: '$' }
 
@@ -39,4 +39,9 @@ export function toLKR(minor: number, currency: Currency, usdRate: number) {
 export function convertMinor(minor: number, from: Currency, to: Currency, usdRate: number): number {
   if (from === to) return minor
   return from === 'USD' ? Math.round(minor * usdRate) : Math.round(minor / usdRate)
+}
+
+/** The amount that counts toward budgets/stats: my share of an expense when friends owe part of it. */
+export function spendMinor(t: Pick<Txn, 'type' | 'amountMinor' | 'ownShareMinor'>): number {
+  return t.type === 'expense' && t.ownShareMinor != null ? t.ownShareMinor : t.amountMinor
 }

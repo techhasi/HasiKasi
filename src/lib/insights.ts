@@ -1,6 +1,7 @@
-import type { Category, Period, Recurring, Txn } from '../db/db'
+import type { Category, Period, Receivable, Recurring, Txn } from '../db/db'
+import { outstandingLKR } from './receivables'
 import { txnsInPeriod } from './periods'
-import { toLKR } from './money'
+import { toLKR, spendMinor } from './money'
 import { periodLabel, todayISO } from './dates'
 
 const dayNum = (iso: string) => {
@@ -40,6 +41,8 @@ export interface Facts {
   /** unusually large expenses this cycle (no notes/merchants included) */
   unusualExpenses: { category: string; amountRs: number; date: string; typicalRs: number }[]
   recurring: { name: string; kind: string; amountRs: number }[]
+  /** money friends still owe me for shared expenses; NOT part of spending (spending already excludes it) */
+  friendsOweMeRs: number
   /** how many earlier cycles exist for comparison (max 4) */
   cyclesCompared: number
 }
@@ -51,6 +54,7 @@ export function computeFacts(o: {
   txns: Txn[]
   categories: Category[]
   recurring: Recurring[]
+  receivables?: Receivable[]
   usdRate: number
 }): Facts | null {
   const { periods, periodIdx, txns, categories, recurring, usdRate } = o
@@ -65,7 +69,7 @@ export function computeFacts(o: {
     let spending = 0
     for (const t of txnsInPeriod(txns, per)) {
       if (t.type === 'transfer' || t.adjustment) continue
-      const lkr = toLKR(t.amountMinor, t.currency, usdRate)
+      const lkr = toLKR(spendMinor(t), t.currency, usdRate)
       if (t.type === 'income') income += lkr
       else {
         spending += lkr
@@ -115,7 +119,7 @@ export function computeFacts(o: {
     for (const t of txnsInPeriod(txns, per)) {
       if (t.type !== 'expense' || t.adjustment) continue
       const arr = history.get(t.categoryId) ?? []
-      arr.push(toLKR(t.amountMinor, t.currency, usdRate))
+      arr.push(toLKR(spendMinor(t), t.currency, usdRate))
       history.set(t.categoryId, arr)
     }
   }
@@ -124,7 +128,7 @@ export function computeFacts(o: {
     .map(t => {
       const h = history.get(t.categoryId) ?? []
       const typical = h.length >= 3 ? h.reduce((s, x) => s + x, 0) / h.length : 0
-      return { t, typical, lkr: toLKR(t.amountMinor, t.currency, usdRate) }
+      return { t, typical, lkr: toLKR(spendMinor(t), t.currency, usdRate) }
     })
     .filter(x => x.typical > 0 && x.lkr >= x.typical * 2.5)
     .sort((a, b) => b.lkr - a.lkr)
@@ -144,6 +148,7 @@ export function computeFacts(o: {
     categories: cats,
     unusualExpenses: unusual,
     recurring: recurring.slice(0, 8).map(r => ({ name: r.name, kind: r.kind, amountRs: rs(toLKR(r.amountMinor, r.currency, usdRate)) })),
+    friendsOweMeRs: rs(outstandingLKR(o.receivables ?? [], txns, usdRate)),
     cyclesCompared: Math.min(periodIdx, 4)
   }
 }

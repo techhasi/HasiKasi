@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, DEFAULT_SETTINGS, type Currency, type Txn, type TxnType } from '../db/db'
 import { parseAmount, CURRENCY_SYMBOL, fmt } from '../lib/money'
@@ -6,6 +6,7 @@ import { todayISO, addDaysISO, friendlyDate } from '../lib/dates'
 import { compressImage } from '../lib/image'
 import { startNewPeriod } from '../lib/periods'
 import { sortCats } from '../lib/categories'
+import { equalSplitOwed, paidOf } from '../lib/receivables'
 import Sheet from './Sheet'
 
 const CATEGORY_COLORS = ['#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#ef4444', '#64748b']
@@ -72,6 +73,15 @@ export default function AddSheet({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [duplicate, setDuplicate] = useState<Txn | null>(null)
+  // "Friends owe me" split (expenses only)
+  const existingRec = useLiveQuery(() => (edit ? db.receivables.where('txnId').equals(edit.id).first() : undefined), [edit?.id])
+  const [owedOn, setOwedOn] = useState(false)
+  const [splitN, setSplitN] = useState(2)
+  const [owedText, setOwedText] = useState('')
+  const [owedManual, setOwedManual] = useState(false)
+  const [person, setPerson] = useState('')
+  const recLoaded = useRef(false)
+
   const [received, setReceived] = useState(edit?.toAmountMinor ? (edit.toAmountMinor / 100).toFixed(2) : '')
 
   // New-category mini form
@@ -81,6 +91,24 @@ export default function AddSheet({
   const [newCatColor, setNewCatColor] = useState(CATEGORY_COLORS[5])
 
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Editing an expense that already has a receivable: load it once
+  useEffect(() => {
+    if (existingRec && !recLoaded.current) {
+      recLoaded.current = true
+      setOwedOn(true)
+      setOwedManual(true)
+      setOwedText((existingRec.amountMinor / 100).toFixed(2))
+      setPerson(existingRec.person)
+    }
+  }, [existingRec])
+
+  // Equal split suggestion follows the amount and head-count until the user types their own figure
+  useEffect(() => {
+    if (!owedOn || owedManual) return
+    const minor = parseAmount(amount)
+    setOwedText(minor ? (equalSplitOwed(minor, splitN) / 100).toFixed(2) : '')
+  }, [amount, splitN, owedOn, owedManual])
 
   const cats = useMemo(() => sortCats(categories.filter(c => c.kind === type)), [categories, type])
   const selectedCat = cats.find(c => c.id === categoryId)
@@ -124,6 +152,21 @@ export default function AddSheet({
     } else if (!categoryId || !cats.some(c => c.id === categoryId)) {
       return setError('Pick a category')
     }
+    // Friends-owe-me split
+    let owedMinor = 0
+    if (type === 'expense' && owedOn) {
+      const o = parseAmount(owedText)
+      if (!o) return setError('Enter how much friends owe you')
+      if (o > amountMinor) return setError("Friends can't owe more than the expense")
+      owedMinor = o
+    }
+    if (existingRec) {
+      const handled = paidOf(existingRec, await db.txns.where('receivableId').equals(existingRec.id).toArray()) + (existingRec.writtenOffMinor ?? 0)
+      if (handled > 0 && !(type === 'expense' && owedOn))
+        return setError('Repayments are already recorded for this — you can’t remove the split')
+      if (handled > owedMinor && type === 'expense' && owedOn)
+        return setError(`Friends already repaid or you wrote off ${fmt(handled, existingRec.currency, { compactCents: true })} — they must owe at least that`)
+    }
     setError('')
 
     // Duplicate check: same type + amount within ±2 days (skip when editing
@@ -150,7 +193,8 @@ export default function AddSheet({
         toAccountId: type === 'transfer' ? effectiveToAccountId! : undefined,
         toAmountMinor: type === 'transfer' ? toAmountMinor : undefined,
         date,
-        note: note.trim()
+        note: note.trim(),
+        ownShareMinor: type === 'expense' && owedOn ? amountMinor - (owedMinor - (existingRec?.writtenOffMinor ?? 0)) : undefined
       }
 
       let saved: Txn
@@ -163,6 +207,16 @@ export default function AddSheet({
         if (willStartPeriod) await startNewPeriod(date)
         saved = { id: uid(), ...fields, startsPeriod: willStartPeriod || undefined, createdAt: Date.now() }
         await db.txns.add(saved)
+      }
+
+      if (type === 'expense' && owedOn) {
+        if (existingRec) {
+          await db.receivables.update(existingRec.id, { person: person.trim(), amountMinor: owedMinor, currency: activeCurrency })
+        } else {
+          await db.receivables.add({ id: uid(), txnId: saved.id, person: person.trim(), amountMinor: owedMinor, currency: activeCurrency, createdAt: Date.now() })
+        }
+      } else if (existingRec) {
+        await db.receivables.delete(existingRec.id)
       }
 
       if (type === 'expense' && receipt) {
@@ -360,6 +414,62 @@ export default function AddSheet({
           </div>
         )}
       </div>
+
+      {/* Friends owe me (expense only) */}
+      {type === 'expense' && (
+        <div className="mb-4 rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/60">
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium">🤝 Friends owe me part of this</span>
+            <input type="checkbox" checked={owedOn} onChange={e => setOwedOn(e.target.checked)} className="h-5 w-5 accent-indigo-500" />
+          </label>
+          {owedOn && (
+            <div className="mt-3">
+              <div className="mb-3 flex items-center gap-2 text-sm">
+                <span className="text-slate-500">Split between</span>
+                <button
+                  onClick={() => { setSplitN(n => Math.max(2, n - 1)); setOwedManual(false) }}
+                  className="h-7 w-7 rounded-full bg-slate-200 font-bold dark:bg-slate-700"
+                >
+                  −
+                </button>
+                <span className="w-5 text-center font-semibold tabular-nums">{splitN}</span>
+                <button
+                  onClick={() => { setSplitN(n => Math.min(30, n + 1)); setOwedManual(false) }}
+                  className="h-7 w-7 rounded-full bg-slate-200 font-bold dark:bg-slate-700"
+                >
+                  +
+                </button>
+                <span className="text-slate-500">people (incl. me)</span>
+              </div>
+              <Label>They owe me ({activeCurrency})</Label>
+              <input
+                inputMode="decimal"
+                value={owedText}
+                onChange={e => { setOwedText(e.target.value); setOwedManual(true) }}
+                placeholder="0.00"
+                className="mb-3 w-full rounded-xl border border-slate-200 bg-white p-2.5 text-sm tabular-nums dark:border-slate-700 dark:bg-slate-900"
+              />
+              <Label>Who? (optional)</Label>
+              <input
+                value={person}
+                onChange={e => setPerson(e.target.value)}
+                placeholder="e.g. Nimal — leave empty for “Friends”"
+                className="mb-2 w-full rounded-xl border border-slate-200 bg-white p-2.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+              />
+              {(() => {
+                const a = parseAmount(amount)
+                const o = parseAmount(owedText)
+                return a && o && o <= a ? (
+                  <p className="text-xs text-slate-500">
+                    Your share: <b>{fmt(a - o, activeCurrency, { compactCents: true })}</b> — only this counts toward your budget and stats. The
+                    full {fmt(a, activeCurrency, { compactCents: true })} still leaves your account.
+                  </p>
+                ) : null
+              })()}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Note */}
       <Label>Note</Label>

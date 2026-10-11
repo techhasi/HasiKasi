@@ -4,7 +4,7 @@ import { db, DEFAULT_SETTINGS, type Txn } from '../db/db'
 import { computeTotals, txnsInPeriod } from '../lib/periods'
 import { logRecurring, skipRecurring, loanRemainingByAccount, loanInstallmentByAccount, payCardAdvanceLoans } from '../lib/recurring'
 import { computeBalances } from '../lib/balances'
-import { fmt, toLKR, convertMinor } from '../lib/money'
+import { fmt, toLKR, convertMinor, spendMinor } from '../lib/money'
 import { friendlyDate, periodLabel, todayISO, addDaysISO, currentMonth, endOfMonthISO, daysUntil, shortDate } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
 import SmsImport from '../components/SmsImport'
@@ -54,7 +54,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
     const spent = new Map<string, number>()
     for (const t of txnsInPeriod(txns, period)) {
       if (t.type !== 'expense') continue
-      spent.set(t.categoryId, (spent.get(t.categoryId) ?? 0) + toLKR(t.amountMinor, t.currency, settings?.usdRate ?? 300))
+      spent.set(t.categoryId, (spent.get(t.categoryId) ?? 0) + toLKR(spendMinor(t), t.currency, settings?.usdRate ?? 300))
     }
     return categories
       .filter(c => c.kind === 'expense' && c.budgetMinor != null)
@@ -413,15 +413,16 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
                       style={{ backgroundColor: isTransfer || isAdjustment ? '#0ea5e922' : `${cat?.color ?? '#64748b'}22` }}
                     >
-                      {isAdjustment ? '⚖️' : isTransfer ? '⇄' : (cat?.emoji ?? '❓')}
+                      {isAdjustment ? (t.receivableId ? '🤝' : '⚖️') : isTransfer ? '⇄' : (cat?.emoji ?? '❓')}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
-                        {isAdjustment ? 'Adjustment' : isTransfer ? 'Transfer' : (cat?.name ?? 'Unknown')}
+                        {isAdjustment ? (t.receivableId ? 'Repayment' : 'Adjustment') : isTransfer ? 'Transfer' : (cat?.name ?? 'Unknown')}
                       </span>
                       <span className="block truncate text-xs text-slate-400">
                         {isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name}
                         {t.note && ` · ${t.note}`}
+                        {t.type === 'expense' && t.ownShareMinor != null && ` · your share ${fmt(t.ownShareMinor, t.currency, { compactCents: true })}`}
                       </span>
                     </span>
                     <span

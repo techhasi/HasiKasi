@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Category, type Period, type Txn } from '../db/db'
 import { txnsInPeriod } from '../lib/periods'
-import { fmt, toLKR } from '../lib/money'
+import { fmt, toLKR, spendMinor } from '../lib/money'
 import { friendlyDate, periodLabel } from '../lib/dates'
 import Sheet from './Sheet'
 import TxnDetail from './TxnDetail'
@@ -25,7 +25,7 @@ export default function CategoryTxnsSheet({ category, period, onClose }: { categ
         .sort((a, b) => b.date.localeCompare(a.date)),
     [txns, period, category.kind]
   )
-  const total = list.reduce((s, t) => s + toLKR(t.amountMinor, t.currency, usdRate), 0)
+  const total = list.reduce((s, t) => s + toLKR(spendMinor(t), t.currency, usdRate), 0)
   const sign = category.kind === 'expense' ? '−' : '+'
   const tone = category.kind === 'expense' ? 'text-rose-500' : 'text-emerald-500'
 
@@ -55,11 +55,12 @@ export default function CategoryTxnsSheet({ category, period, onClose }: { categ
               <span className="block truncate text-sm font-medium">{t.note || category.name}</span>
               <span className="block truncate text-xs text-slate-400">
                 {friendlyDate(t.date)} · {accById.get(t.accountId)?.name ?? '—'}
+                {t.ownShareMinor != null && t.type === 'expense' && ` · of ${fmt(t.amountMinor, t.currency, { compactCents: true })}`}
               </span>
             </span>
             <span className={`text-sm font-semibold tabular-nums ${tone}`}>
               {sign}
-              {fmt(t.amountMinor, t.currency, { compactCents: true })}
+              {fmt(spendMinor(t), t.currency, { compactCents: true })}
             </span>
           </button>
         ))}

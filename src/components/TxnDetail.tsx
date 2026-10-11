@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Txn } from '../db/db'
 import { fmt } from '../lib/money'
 import { friendlyDate } from '../lib/dates'
+import { deleteForTxn, viewOf } from '../lib/receivables'
 import Sheet from './Sheet'
 import AddSheet from './AddSheet'
 
@@ -14,6 +15,11 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
     [txn.toAccountId]
   )
   const receipt = useLiveQuery(() => db.receipts.get(txn.id), [txn.id])
+  const owed = useLiveQuery(async () => {
+    const r = await db.receivables.where('txnId').equals(txn.id).first()
+    if (!r) return undefined
+    return viewOf(r, await db.txns.where('receivableId').equals(r.id).toArray())
+  }, [txn.id])
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -29,9 +35,10 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
   }, [receipt])
 
   async function remove() {
-    await db.transaction('rw', [db.txns, db.receipts], async () => {
+    await db.transaction('rw', [db.txns, db.receipts, db.receivables], async () => {
       await db.txns.delete(txn.id)
       await db.receipts.delete(txn.id)
+      await deleteForTxn(txn.id)
     })
     onClose()
   }
@@ -43,9 +50,9 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
           className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl text-2xl"
           style={{ backgroundColor: isTransfer || isAdjustment ? '#0ea5e922' : `${category?.color ?? '#64748b'}22` }}
         >
-          {isAdjustment ? '⚖️' : isTransfer ? '⇄' : (category?.emoji ?? '❓')}
+          {isAdjustment ? (txn.receivableId ? '🤝' : '⚖️') : isTransfer ? '⇄' : (category?.emoji ?? '❓')}
         </span>
-        <p className="text-sm text-slate-500">{isAdjustment ? 'Balance adjustment' : isTransfer ? 'Transfer' : category?.name}</p>
+        <p className="text-sm text-slate-500">{isAdjustment ? (txn.receivableId ? 'Repayment from friends' : 'Balance adjustment') : isTransfer ? 'Transfer' : category?.name}</p>
         <p
           className={`text-3xl font-bold tabular-nums ${
             isTransfer ? 'text-sky-500' : txn.type === 'expense' ? 'text-rose-500' : 'text-emerald-500'
@@ -71,6 +78,19 @@ export default function TxnDetail({ txn, onClose }: { txn: Txn; onClose: () => v
         )}
         <Row label="Currency" value={txn.currency} />
         {txn.note && <Row label="Note" value={txn.note} />}
+        {txn.type === 'expense' && txn.ownShareMinor != null && (
+          <Row label="Your share" value={fmt(txn.ownShareMinor, txn.currency, { compactCents: true })} />
+        )}
+        {owed && (
+          <Row
+            label={`${owed.r.person || 'Friends'} owe${owed.r.person ? 's' : ''}`}
+            value={
+              owed.remainingMinor > 0
+                ? `${fmt(owed.remainingMinor, owed.r.currency, { compactCents: true })} left of ${fmt(owed.r.amountMinor, owed.r.currency, { compactCents: true })}`
+                : 'All settled ✅'
+            }
+          />
+        )}
         {txn.startsPeriod && <Row label="Budget month" value="Started a new period 🗓️" />}
       </div>
 

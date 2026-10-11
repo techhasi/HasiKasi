@@ -4,6 +4,7 @@ import { db, uid, DEFAULT_SETTINGS, MARKET_TYPES, type Account, type Currency, t
 import { fmt, toLKR, parseAmount, convertMinor, CURRENCY_SYMBOL } from '../lib/money'
 import { shortDate, currentMonth, endOfMonthISO, periodLabel } from '../lib/dates'
 import { txnsInPeriod } from '../lib/periods'
+import { outstandingLKR } from '../lib/receivables'
 import { computeBalances, addAdjustment } from '../lib/balances'
 import { loanRemainingByAccount, loanInstallmentByAccount, payCardAdvanceLoans } from '../lib/recurring'
 import { currentValueMinor, profitMinor, fdMaturityMinor } from '../lib/investments'
@@ -12,6 +13,8 @@ import { marketApiKey } from '../lib/env'
 import Sheet from '../components/Sheet'
 import AddSheet from '../components/AddSheet'
 import RecurringSheet from '../components/RecurringSheet'
+import OwedSheet from '../components/OwedSheet'
+import MarketSheet from '../components/MarketSheet'
 import InvestmentSheet, { INVESTMENT_TYPES } from '../components/InvestmentSheet'
 
 const ACCOUNT_TYPES = [
@@ -29,6 +32,9 @@ export default function Accounts() {
   const txns = useLiveQuery(() => db.txns.toArray(), [], [])
   const recurring = useLiveQuery(() => db.recurring.orderBy('nextDue').toArray(), [], [])
   const investments = useLiveQuery(() => db.investments.toArray(), [], [])
+  const receivables = useLiveQuery(() => db.receivables.toArray(), [], [])
+  const [owedOpen, setOwedOpen] = useState(false)
+  const [marketOpen, setMarketOpen] = useState(false)
 
   const [accountSheet, setAccountSheet] = useState<{ edit?: Account; balanceMinor?: number } | null>(null)
   const [detailSheet, setDetailSheet] = useState<{ account: Account; balanceMinor: number } | null>(null)
@@ -79,6 +85,24 @@ export default function Accounts() {
           </p>
         )}
       </div>
+
+      {/* Friends owe me */}
+      {receivables.length > 0 && (() => {
+        const owed = outstandingLKR(receivables, txns, usdRate)
+        return (
+          <button
+            onClick={() => setOwedOpen(true)}
+            className="mb-5 flex w-full items-center justify-between rounded-3xl bg-amber-50 p-4 text-left dark:bg-amber-500/10"
+          >
+            <span>
+              <span className="block text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">🤝 Owed to you</span>
+              <span className="block text-xl font-bold tabular-nums">{fmt(owed, 'LKR', { compactCents: true })}</span>
+              <span className="block text-xs text-slate-500">Not included in net worth</span>
+            </span>
+            <span className="text-lg text-slate-400">›</span>
+          </button>
+        )
+      })()}
 
       {/* Accounts */}
       <SectionHeader title="Accounts" onAdd={() => setAccountSheet({})} />
@@ -194,6 +218,14 @@ export default function Accounts() {
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Investments & savings</h2>
         <div className="flex items-center gap-2">
+          {investments.length > 0 && (
+            <button
+              onClick={() => setMarketOpen(true)}
+              className="rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white"
+            >
+              ✨ AI
+            </button>
+          )}
           {hasMarket && (
             <button
               onClick={refreshPrices}
@@ -302,6 +334,8 @@ export default function Accounts() {
       {accountSheet && (
         <AccountSheet edit={accountSheet.edit} balanceMinor={accountSheet.balanceMinor} onClose={() => setAccountSheet(null)} />
       )}
+      {marketOpen && <MarketSheet onClose={() => setMarketOpen(false)} />}
+      {owedOpen && <OwedSheet onClose={() => setOwedOpen(false)} />}
       {recurringSheet && <RecurringSheet edit={recurringSheet.edit} onClose={() => setRecurringSheet(null)} />}
       {investmentSheet && <InvestmentSheet edit={investmentSheet.edit} onClose={() => setInvestmentSheet(null)} />}
     </div>

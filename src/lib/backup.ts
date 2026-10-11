@@ -16,6 +16,7 @@ interface BackupFile {
   taskLists?: unknown[]
   reminders?: unknown[]
   merchantRules?: unknown[]
+  receivables?: unknown[]
   receipts: { txnId: string; dataUrl: string }[]
 }
 
@@ -45,6 +46,7 @@ export async function buildBackup(): Promise<BackupFile> {
     taskLists: await db.taskLists.toArray(),
     reminders: await db.reminders.toArray(),
     merchantRules: await db.merchantRules.toArray(),
+    receivables: await db.receivables.toArray(),
     receipts: await Promise.all(
       receipts.map(async r => ({ txnId: r.txnId, dataUrl: await blobToDataURL(r.blob) }))
     )
@@ -138,12 +140,12 @@ export async function importBackupData(input: BackupFile, opts: { snapshot?: boo
   const current = await db.settings.get('app')
   await db.transaction(
     'rw',
-    [db.txns, db.categories, db.accounts, db.periods, db.settings, db.receipts, db.recurring, db.investments, db.tasks, db.taskLists, db.reminders, db.merchantRules],
+    [db.txns, db.categories, db.accounts, db.periods, db.settings, db.receipts, db.recurring, db.investments, db.tasks, db.taskLists, db.reminders, db.merchantRules, db.receivables],
     async () => {
       await Promise.all([
         db.txns.clear(), db.categories.clear(), db.accounts.clear(),
         db.periods.clear(), db.settings.clear(), db.receipts.clear(),
-        db.recurring.clear(), db.investments.clear(), db.tasks.clear(), db.taskLists.clear(), db.reminders.clear(), db.merchantRules.clear()
+        db.recurring.clear(), db.investments.clear(), db.tasks.clear(), db.taskLists.clear(), db.reminders.clear(), db.merchantRules.clear(), db.receivables.clear()
       ])
       await db.txns.bulkAdd(backup.txns as never[])
       await db.categories.bulkAdd(backup.categories as never[])
@@ -155,6 +157,7 @@ export async function importBackupData(input: BackupFile, opts: { snapshot?: boo
       if (backup.tasks) await db.tasks.bulkAdd(backup.tasks as never[])
       if (backup.taskLists) await db.taskLists.bulkAdd(backup.taskLists as never[])
       if (backup.reminders) await db.reminders.bulkAdd(backup.reminders as never[])
+      if (backup.receivables) await db.receivables.bulkAdd(backup.receivables as never[])
       if (backup.merchantRules) await db.merchantRules.bulkAdd(backup.merchantRules as never[])
       await db.receipts.bulkAdd(receipts)
       if (current) {

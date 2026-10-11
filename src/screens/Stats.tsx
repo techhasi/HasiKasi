@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from 'recharts'
 import { db, DEFAULT_SETTINGS, type Category, type CategoryKind, type Period, type Txn } from '../db/db'
 import { txnsInPeriod } from '../lib/periods'
-import { fmt, toLKR } from '../lib/money'
+import { fmt, toLKR, spendMinor } from '../lib/money'
 import { periodLabel, shortDate, todayISO } from '../lib/dates'
 import { sortCats } from '../lib/categories'
 import CategoryTxnsSheet from '../components/CategoryTxnsSheet'
@@ -20,7 +20,7 @@ function periodTotal(txns: Txn[], p: Period, kind: CategoryKind, usdRate: number
   for (const t of txnsInPeriod(txns, p)) {
     if (t.type !== kind || t.adjustment) continue
     if (categoryId && t.categoryId !== categoryId) continue
-    sum += toLKR(t.amountMinor, t.currency, usdRate)
+    sum += toLKR(spendMinor(t), t.currency, usdRate)
   }
   return sum
 }
@@ -48,7 +48,7 @@ export default function Stats() {
     const byCat = new Map<string, number>()
     for (const t of txnsInPeriod(txns, period)) {
       if (t.type !== kind || t.adjustment) continue
-      byCat.set(t.categoryId, (byCat.get(t.categoryId) ?? 0) + toLKR(t.amountMinor, t.currency, usdRate))
+      byCat.set(t.categoryId, (byCat.get(t.categoryId) ?? 0) + toLKR(spendMinor(t), t.currency, usdRate))
     }
     return [...byCat.entries()]
       .map(([id, minor]) => {
@@ -72,7 +72,7 @@ export default function Stats() {
     if (!prevPeriod) return m
     for (const t of txnsInPeriod(txns, prevPeriod)) {
       if (t.type !== kind || t.adjustment) continue
-      m.set(t.categoryId, (m.get(t.categoryId) ?? 0) + toLKR(t.amountMinor, t.currency, usdRate))
+      m.set(t.categoryId, (m.get(t.categoryId) ?? 0) + toLKR(spendMinor(t), t.currency, usdRate))
     }
     return m
   }, [txns, prevPeriod, kind, usdRate])

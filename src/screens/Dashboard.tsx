@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_SETTINGS, type Txn } from '../db/db'
 import { computeTotals, txnsInPeriod } from '../lib/periods'
-import { logRecurring, skipRecurring, loanRemainingByAccount, loanInstallmentByAccount, payCardAdvanceLoans } from '../lib/recurring'
+import { logRecurring, skipRecurring, loanRemainingByAccount, loanInstallmentByAccount } from '../lib/recurring'
 import { computeBalances } from '../lib/balances'
 import { fmt, toLKR, convertMinor, spendMinor } from '../lib/money'
 import { friendlyDate, periodLabel, todayISO, addDaysISO, currentMonth, endOfMonthISO, daysUntil, shortDate } from '../lib/dates'
 import TxnDetail from '../components/TxnDetail'
 import SmsImport from '../components/SmsImport'
 import SearchSheet from '../components/SearchSheet'
-import AddSheet from '../components/AddSheet'
+import CardPayFlow from '../components/CardPayFlow'
 import RemindersSheet from '../components/RemindersSheet'
 import { dueReminders } from '../lib/reminders'
 import type { Account } from '../db/db'
@@ -39,7 +39,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
   const [smsOpen, setSmsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [remindersOpen, setRemindersOpen] = useState(false)
-  const [payCard, setPayCard] = useState<{ account: Account; dueMinor: number; currency: 'LKR' | 'USD' } | null>(null)
+  const [payCard, setPayCard] = useState<{ account: Account } | null>(null)
 
   const period = periods.length ? periods[Math.max(0, periods.length - 1 - periodOffset)] : undefined
 
@@ -445,31 +445,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
       {smsOpen && <SmsImport onClose={() => setSmsOpen(false)} />}
       {searchOpen && <SearchSheet onClose={() => setSearchOpen(false)} />}
       {remindersOpen && <RemindersSheet onClose={() => setRemindersOpen(false)} />}
-      {payCard && (
-        <AddSheet
-          initial={{
-            type: 'transfer',
-            amount: (payCard.dueMinor / 100).toFixed(2),
-            currency: payCard.account.currency ?? 'LKR',
-            toAccountId: payCard.account.id,
-            note: `${payCard.account.name} bill`
-          }}
-          onSaved={async saved => {
-            // Only a transfer INTO this card counts as a bill payment.
-            if (saved.type === 'transfer' && saved.toAccountId === payCard.account.id) {
-              const paidIntoCard = saved.toAmountMinor ?? saved.amountMinor
-              // Settle the cycle (advance the installment loan, mark paid) only when the
-              // full bill is covered. Partial payments just lower the balance, so you can
-              // pay again whenever more money comes in.
-              if (paidIntoCard >= payCard.dueMinor) {
-                await db.accounts.update(payCard.account.id, { lastPaidMonth: currentMonth(), statementMinor: undefined })
-                await payCardAdvanceLoans(payCard.account.id)
-              }
-            }
-          }}
-          onClose={() => setPayCard(null)}
-        />
-      )}
+      {payCard && <CardPayFlow account={payCard.account} onClose={() => setPayCard(null)} />}
     </div>
   )
 }

@@ -6,12 +6,12 @@ import { shortDate, currentMonth, endOfMonthISO, periodLabel } from '../lib/date
 import { txnsInPeriod } from '../lib/periods'
 import { outstandingLKR } from '../lib/receivables'
 import { computeBalances, addAdjustment } from '../lib/balances'
-import { loanRemainingByAccount, loanInstallmentByAccount, payCardAdvanceLoans } from '../lib/recurring'
+import { loanRemainingByAccount, loanInstallmentByAccount } from '../lib/recurring'
 import { currentValueMinor, profitMinor, fdMaturityMinor } from '../lib/investments'
 import { fetchPriceUSD } from '../lib/prices'
 import { marketApiKey } from '../lib/env'
 import Sheet from '../components/Sheet'
-import AddSheet from '../components/AddSheet'
+import CardPayFlow from '../components/CardPayFlow'
 import RecurringSheet from '../components/RecurringSheet'
 import OwedSheet from '../components/OwedSheet'
 import MarketSheet from '../components/MarketSheet'
@@ -38,7 +38,7 @@ export default function Accounts() {
 
   const [accountSheet, setAccountSheet] = useState<{ edit?: Account; balanceMinor?: number } | null>(null)
   const [detailSheet, setDetailSheet] = useState<{ account: Account; balanceMinor: number } | null>(null)
-  const [payCard, setPayCard] = useState<{ account: Account; dueMinor: number } | null>(null)
+  const [payCard, setPayCard] = useState<{ account: Account } | null>(null)
   const [recurringSheet, setRecurringSheet] = useState<{ edit?: Recurring } | null>(null)
   const [investmentSheet, setInvestmentSheet] = useState<{ edit?: Investment } | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -300,37 +300,13 @@ export default function Accounts() {
               setDetailSheet(null)
             }}
             onPayBill={() => {
-              setPayCard({ account: a, dueMinor })
+              setPayCard({ account: a })
               setDetailSheet(null)
             }}
           />
         )
       })()}
-      {payCard && (
-        <AddSheet
-          initial={{
-            type: 'transfer',
-            amount: (payCard.dueMinor / 100).toFixed(2),
-            currency: payCard.account.currency ?? 'LKR',
-            toAccountId: payCard.account.id,
-            note: `${payCard.account.name} bill`
-          }}
-          onSaved={async saved => {
-            // Only a transfer INTO this card counts as a bill payment.
-            if (saved.type === 'transfer' && saved.toAccountId === payCard.account.id) {
-              const paidIntoCard = saved.toAmountMinor ?? saved.amountMinor
-              // Settle the cycle (advance the installment loan, mark paid) only when the
-              // full bill is covered. Partial payments just lower the balance, so you can
-              // pay again whenever more money comes in.
-              if (paidIntoCard >= payCard.dueMinor) {
-                await db.accounts.update(payCard.account.id, { lastPaidMonth: currentMonth(), statementMinor: undefined })
-                await payCardAdvanceLoans(payCard.account.id)
-              }
-            }
-          }}
-          onClose={() => setPayCard(null)}
-        />
-      )}
+      {payCard && <CardPayFlow account={payCard.account} onClose={() => setPayCard(null)} />}
       {accountSheet && (
         <AccountSheet edit={accountSheet.edit} balanceMinor={accountSheet.balanceMinor} onClose={() => setAccountSheet(null)} />
       )}

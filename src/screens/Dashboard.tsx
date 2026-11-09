@@ -111,14 +111,23 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
     const inPeriod = txnsInPeriod(txns, period).sort(
       (a, b) => (a.date === b.date ? b.createdAt - a.createdAt : b.date.localeCompare(a.date))
     )
-    const groups: { date: string; items: Txn[] }[] = []
+    const rate = settings?.usdRate ?? 300
+    const groups: { date: string; items: Txn[]; spent: number; earned: number }[] = []
     for (const t of inPeriod) {
-      const g = groups[groups.length - 1]
-      if (g && g.date === t.date) g.items.push(t)
-      else groups.push({ date: t.date, items: [t] })
+      let g = groups[groups.length - 1]
+      if (!g || g.date !== t.date) {
+        g = { date: t.date, items: [], spent: 0, earned: 0 }
+        groups.push(g)
+      }
+      g.items.push(t)
+      // Same rules as the cycle totals: no transfers or balance adjustments, and only my share of split expenses
+      if (t.type === 'transfer' || t.adjustment) continue
+      const lkr = toLKR(spendMinor(t), t.currency, rate)
+      if (t.type === 'expense') g.spent += lkr
+      else g.earned += lkr
     }
     return groups
-  }, [txns, period])
+  }, [txns, period, settings?.usdRate])
 
   const catById = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories])
   const accById = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
@@ -395,7 +404,15 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
 
         {grouped.map(g => (
           <div key={g.date} className="mb-4">
-            <p className="mb-1.5 px-1 text-xs font-semibold text-slate-400 dark:text-slate-500">{friendlyDate(g.date)}</p>
+            <div className="mb-1.5 flex items-baseline justify-between gap-3 px-1">
+              <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">{friendlyDate(g.date)}</p>
+              {(g.spent > 0 || g.earned > 0) && (
+                <p className="flex gap-2 text-[11px] font-medium tabular-nums">
+                  {g.spent > 0 && <span className="text-rose-500/80">−{fmt(g.spent, 'LKR', { compactCents: true })}</span>}
+                  {g.earned > 0 && <span className="text-emerald-500/80">+{fmt(g.earned, 'LKR', { compactCents: true })}</span>}
+                </p>
+              )}
+            </div>
             <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
               {g.items.map(t => {
                 const isTransfer = t.type === 'transfer'

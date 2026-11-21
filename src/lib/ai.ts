@@ -81,6 +81,17 @@ export interface Grounding {
   suggestionsHtml?: string
 }
 
+/**
+ * Google AI Studio keys are plain ASCII ("AIza…" + letters/digits/_/-). Pasting on a phone can add invisible
+ * characters, smart quotes or stray text, and any such character makes the browser refuse to even send the
+ * request. So pull out the key itself, or at least drop everything that can't be part of one.
+ */
+export function cleanApiKey(raw: string): string {
+  const m = raw.match(/AIza[0-9A-Za-z_-]{30,}/)
+  return m ? m[0] : raw.replace(/[^0-9A-Za-z_-]/g, '')
+}
+export const looksLikeApiKey = (k: string) => /^AIza[0-9A-Za-z_-]{30,}$/.test(k)
+
 class GeminiError extends Error {
   constructor(
     message: string,
@@ -124,11 +135,14 @@ async function callOnce(
   try {
     res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cleanApiKey(opts.apiKey) },
       body: JSON.stringify(body)
     })
-  } catch {
-    throw new GeminiError('Could not reach Gemini — check your internet connection and try again.')
+  } catch (e) {
+    const why = e instanceof Error ? e.message : ''
+    throw new GeminiError(
+      `Could not reach Gemini${why ? ` (${why})` : ''}. Check your internet connection (and any VPN or content blocker); if that's fine, re-paste your API key in Settings → AI insights.`
+    )
   }
   if (!res.ok) {
     const detail = googleMessage(await res.text().catch(() => ''))

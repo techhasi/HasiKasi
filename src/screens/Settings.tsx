@@ -5,7 +5,7 @@ import { exportBackup, getSnapshotInfo, readBackupFile, importBackupData, summar
 import { autoBackup, normalizeRepo } from '../lib/cloudBackup'
 import { lockSupported, enrollLock, verifyLock } from '../lib/appLock'
 import { ENV_GCAL_CLIENT_ID, ENV_MARKET_KEY } from '../lib/env'
-import { DEFAULT_GEMINI_MODEL, FREE_MODELS, testGemini } from '../lib/ai'
+import { DEFAULT_GEMINI_MODEL, FREE_MODELS, cleanApiKey, looksLikeApiKey, testGemini } from '../lib/ai'
 import GuideSheet from '../components/GuideSheet'
 import CategoriesSheet from '../components/CategoriesSheet'
 import CloudRestoreSheet from '../components/CloudRestoreSheet'
@@ -154,9 +154,16 @@ export default function SettingsScreen() {
             type="password"
             placeholder="Gemini API key"
             value={settings.geminiApiKey ?? ''}
-            onCommit={v => update({ geminiApiKey: v.trim() || undefined })}
+            onCommit={v => update({ geminiApiKey: cleanApiKey(v) || undefined })}
             className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
+          {settings.geminiApiKey && (
+            <p className={`-mt-1 mb-2 text-xs ${looksLikeApiKey(cleanApiKey(settings.geminiApiKey)) ? 'text-emerald-500' : 'text-amber-500'}`}>
+              {looksLikeApiKey(cleanApiKey(settings.geminiApiKey))
+                ? `Key looks right (AIza…${cleanApiKey(settings.geminiApiKey).slice(-4)})`
+                : "This doesn't look like a Google AI Studio key — it should start with AIza and be about 39 characters."}
+            </p>
+          )}
           <SyncedInput
             placeholder={`Model — leave empty for auto (${DEFAULT_GEMINI_MODEL}…)`}
             value={settings.geminiModel ?? ''}

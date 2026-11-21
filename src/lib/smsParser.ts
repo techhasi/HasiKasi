@@ -139,7 +139,15 @@ const MERCHANT_STOP =
   'on|for|via|ref|with|using|was|done|has|is|lkr|slr|rs|usd|avl|avail|available|bal|balance|total|limit|outstanding|current|authorised|authorized|successful'
 const MERCHANT_RE = new RegExp(String.raw`\b(?:at|to|from)\s+([^\n.,;]{2,60}?)(?=\s+(?:${MERCHANT_STOP})\b|[.,;\n]|$)`, 'gi')
 
+/** "trxn LKR 756.99 @ CENTRAL PHARMACY, KURUNEGALA. [Av.Bal ...]" — merchant follows an "@". */
+const AT_MERCHANT_RE = /@\s*([^\n[\]]{2,60}?)(?=\s*(?:\.\s|\.$|\[|\n|$))/
+
 function parseMerchant(text: string): string {
+  const at = text.match(AT_MERCHANT_RE)
+  if (at) {
+    const candidate = cleanMerchant(at[1])
+    if (candidate && !looksLikeAccountRef(candidate)) return candidate
+  }
   // "at KEELLS SUPER on ...", "to JOHN via ...", "from ACME for ..." — skip account refs.
   for (const m of text.matchAll(MERCHANT_RE)) {
     const candidate = cleanMerchant(m[1])
@@ -161,7 +169,9 @@ function parseAccountHint(text: string): string | null {
   const m =
     text.match(/\b(?:card|a\/?c|acc(?:ount)?)\s*(?:no\.?|number)?\s*[x*#•]*\s*(\d{3,4})\b/i) ??
     text.match(/\bending(?:\s+in)?\s*[x*#•]*\s*(\d{3,4})\b/i) ??
-    text.match(/[x*#•]{2,}\s*(\d{3,4})\b/i)
+    text.match(/[x*#•]{2,}\s*(\d{3,4})\b/i) ??
+    // masks split by dashes/spaces: "X-X-X-3519", "XXXX XXXX 3519", "* * * 3519"
+    text.match(/\b(?:[x*#•]+[-\s])+(\d{3,4})\b/i)
   return m ? m[1] : null
 }
 

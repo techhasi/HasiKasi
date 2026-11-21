@@ -480,7 +480,7 @@ function AccountDetailSheet({
           rows.map(t => {
             const v = rowView(t)
             return (
-              <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm dark:bg-slate-800/60">
+              <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 card dark:bg-slate-800/60">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-base dark:bg-slate-700/60">{v.emoji}</span>
                 <div className="min-w-0 flex-1">
                   <p className={`truncate text-sm font-medium ${v.muted ? 'text-slate-500 dark:text-slate-400' : ''}`}>{v.title}</p>

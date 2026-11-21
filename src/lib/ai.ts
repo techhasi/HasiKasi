@@ -1,10 +1,33 @@
 import type { Facts } from './insights'
 import type { PortfolioFacts } from './portfolio'
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest'
+/**
+ * Free-tier text models, best first (per Google's pricing page). Pinned ids rather than a "-latest" alias:
+ * an alias can silently move to a paid-only model, which makes free keys fail with quota errors.
+ * Each model has its own free quota, so falling through this list also works around a per-model limit.
+ */
+export const FREE_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash']
+export const DEFAULT_GEMINI_MODEL = FREE_MODELS[0]
+const OK_MODEL_KEY = 'gemini-model-ok'
+const lastGoodModel = () => {
+  try {
+    return localStorage.getItem(OK_MODEL_KEY) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+const rememberModel = (m: string) => {
+  try {
+    localStorage.setItem(OK_MODEL_KEY, m)
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 export type Tone = 'good' | 'watch' | 'alert'
 export interface InsightReport {
+  /** which Gemini model produced it */
+  model?: string
   headline: string
   insights: { title: string; detail: string; tone: Tone }[]
   actions: string[]
@@ -59,11 +82,89 @@ export interface Grounding {
 }
 
 class GeminiError extends Error {
-  constructor(message: string, readonly status?: number, readonly raw?: string) {
+  constructor(
+    message: string,
+    readonly status?: number,
+    /** Google's own error message, when it sent one */
+    readonly detail?: string,
+    /** a different model might succeed (404, quota, overloaded, unsupported model) */
+    readonly tryNext = false
+  ) {
     super(message)
   }
 }
 
+/** Pull "error.message" out of Google's JSON error body. */
+function googleMessage(raw: string): string {
+  try {
+    const m = (JSON.parse(raw) as { error?: { message?: string } }).error?.message
+    if (m) return m.replace(/\s+/g, ' ').slice(0, 220)
+  } catch {
+    /* not JSON */
+  }
+  return raw.replace(/\s+/g, ' ').slice(0, 160)
+}
+
+async function callOnce(
+  opts: { apiKey: string; user: string; system?: string; json?: boolean; search?: boolean },
+  model: string
+): Promise<{ text: string; grounding?: Grounding }> {
+  const body = {
+    systemInstruction: { parts: [{ text: opts.system ?? SYSTEM }] },
+    contents: [{ role: 'user', parts: [{ text: opts.user }] }],
+    ...(opts.search ? { tools: [{ google_search: {} }] } : {}),
+    generationConfig: {
+      // Newer models spend part of this budget on hidden "thinking", so keep generous headroom.
+      // (No temperature override: Gemini 3 models are tuned for their default.)
+      maxOutputTokens: opts.search ? 6144 : 4096,
+      ...(opts.json ? { responseMimeType: 'application/json', responseSchema: REPORT_SCHEMA } : {})
+    }
+  }
+  let res: Response
+  try {
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      body: JSON.stringify(body)
+    })
+  } catch {
+    throw new GeminiError('Could not reach Gemini — check your internet connection and try again.')
+  }
+  if (!res.ok) {
+    const detail = googleMessage(await res.text().catch(() => ''))
+    const keyProblem = /api key|API_KEY|referer|referrer|not authorized|permission denied.*key/i.test(detail)
+    if (keyProblem || res.status === 401)
+      throw new GeminiError(`Gemini rejected your API key (${detail || res.status}). Check it in Settings → AI insights.`, res.status, detail)
+    // Schema/tool problems are the caller's to handle (retry without them) — a different model won't help
+    const featureProblem = /schema|response_?mime|json payload|unknown name|tools?\b|google_search|grounding/i.test(detail)
+    if (res.status === 400 && featureProblem) throw new GeminiError(`Gemini couldn't process the request (${detail}).`, 400, detail)
+    const modelProblem =
+      res.status === 404 ||
+      res.status === 429 ||
+      res.status === 500 ||
+      res.status === 503 ||
+      ((res.status === 400 || res.status === 403) && /model|not (?:found|supported)|unsupported|not available|permission/i.test(detail))
+    throw new GeminiError(`Gemini error ${res.status} on ${model}: ${detail || 'no details'}`, res.status, detail, modelProblem)
+  }
+  const data = (await res.json()) as GeminiResponse
+  const cand = data.candidates?.[0]
+  // Skip any "thought" parts; only the final answer text is wanted
+  const text = cand?.content?.parts?.filter(p => !p.thought).map(p => p.text ?? '').join('').trim()
+  if (!text) {
+    if (data.promptFeedback?.blockReason) throw new GeminiError('The request was blocked by Gemini.')
+    if (cand?.finishReason === 'MAX_TOKENS') throw new GeminiError('The answer was cut off before it started — tap again.', undefined, undefined, true)
+    throw new GeminiError('Gemini returned an empty answer — tap again.', undefined, undefined, true)
+  }
+  if (cand?.finishReason === 'MAX_TOKENS' && opts.json) throw new GeminiError('The answer was cut off — tap again.', undefined, undefined, true)
+  const gm = cand?.groundingMetadata
+  const sources = (gm?.groundingChunks ?? [])
+    .map(c => ({ title: c.web?.title ?? '', uri: c.web?.uri ?? '' }))
+    .filter(c => /^https?:\/\//.test(c.uri))
+  const grounding = gm ? { sources: dedupe(sources), suggestionsHtml: gm.searchEntryPoint?.renderedContent } : undefined
+  return { text, grounding }
+}
+
+/** Try the chosen model, then the remembered-good one, then the free-tier list, until one answers. */
 async function generate(opts: {
   apiKey: string
   model?: string
@@ -72,48 +173,33 @@ async function generate(opts: {
   json?: boolean
   /** enable Grounding with Google Search */
   search?: boolean
-}): Promise<{ text: string; grounding?: Grounding }> {
-  const model = (opts.model || DEFAULT_GEMINI_MODEL).trim()
-  const body = {
-    systemInstruction: { parts: [{ text: opts.system ?? SYSTEM }] },
-    contents: [{ role: 'user', parts: [{ text: opts.user }] }],
-    ...(opts.search ? { tools: [{ google_search: {} }] } : {}),
-    generationConfig: {
-      temperature: 0.3,
-      // Newer models spend part of this budget on hidden "thinking", so keep generous headroom
-      maxOutputTokens: opts.search ? 6144 : 4096,
-      ...(opts.json ? { responseMimeType: 'application/json', responseSchema: REPORT_SCHEMA } : {})
+}): Promise<{ text: string; grounding?: Grounding; model: string }> {
+  const candidates = [...new Set([opts.model?.trim(), lastGoodModel(), ...FREE_MODELS].filter((m): m is string => !!m))].slice(0, 5)
+  const failures: GeminiError[] = []
+  for (const model of candidates) {
+    try {
+      const out = await callOnce(opts, model)
+      rememberModel(model)
+      return { ...out, model }
+    } catch (e) {
+      if (!(e instanceof GeminiError) || !e.tryNext) throw e
+      failures.push(e)
     }
   }
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': opts.apiKey },
-    body: JSON.stringify(body)
-  })
-  if (!res.ok) {
-    const raw = await res.text().catch(() => '')
-    if (res.status === 429) throw new GeminiError('Free quota reached for now — try again in a minute (or tomorrow if the daily limit is used).', 429, raw)
-    if (res.status === 404) throw new GeminiError(`Model “${model}” was not found — check the model name in Settings.`, 404, raw)
-    if (/api key|API_KEY/i.test(raw) || res.status === 401 || res.status === 403)
-      throw new GeminiError('Gemini rejected your API key — check it in Settings → AI insights.', res.status, raw)
-    throw new GeminiError(`Gemini error (${res.status}). Try again shortly.`, res.status, raw)
-  }
-  const data = (await res.json()) as GeminiResponse
-  const cand = data.candidates?.[0]
-  // Skip any "thought" parts; only the final answer text is wanted
-  const text = cand?.content?.parts?.filter(p => !p.thought).map(p => p.text ?? '').join('').trim()
-  if (!text) {
-    if (data.promptFeedback?.blockReason) throw new GeminiError('The request was blocked by Gemini.')
-    if (cand?.finishReason === 'MAX_TOKENS') throw new GeminiError('The answer was cut off before it started — try again, or choose a lighter model in Settings.')
-    throw new GeminiError('Gemini returned an empty answer. Try again.')
-  }
-  if (cand?.finishReason === 'MAX_TOKENS' && opts.json) throw new GeminiError('The answer was cut off — try again.')
-  const gm = cand?.groundingMetadata
-  const sources = (gm?.groundingChunks ?? [])
-    .map(c => ({ title: c.web?.title ?? '', uri: c.web?.uri ?? '' }))
-    .filter(c => /^https?:\/\//.test(c.uri))
-  const grounding = gm ? { sources: dedupe(sources), suggestionsHtml: gm.searchEntryPoint?.renderedContent } : undefined
-  return { text, grounding }
+  const quota = failures.filter(f => f.status === 429).length
+  const last = failures[failures.length - 1]
+  if (quota === failures.length)
+    throw new GeminiError(
+      `Free quota is used up on all the models I tried (${candidates.join(', ')}). Per-minute limits clear in a minute; daily ones reset at midnight Pacific time. Last message: ${last?.detail ?? ''}`.trim(),
+      429
+    )
+  throw last ?? new GeminiError('Gemini is not responding — try again shortly.')
+}
+
+/** Settings → "Test connection": shows which model answered, or Google's exact complaint. */
+export async function testGemini(apiKey: string, model?: string): Promise<string> {
+  const out = await generate({ apiKey, model, system: 'Reply with one short word.', user: 'Say OK.' })
+  return out.model
 }
 
 function dedupe(list: { title: string; uri: string }[]) {
@@ -139,16 +225,23 @@ function parseReport(text: string): InsightReport {
 export async function analyze(opts: { apiKey: string; model?: string; facts: Facts }): Promise<InsightReport> {
   const user = `FACTS:\n${JSON.stringify(opts.facts)}\n\nAnalyse this cycle and respond as JSON with a headline, 3-5 insights and 2-3 actions.`
   const run = (json: boolean) => generate({ apiKey: opts.apiKey, model: opts.model, user, json })
-  let text: string
+  let text = ''
+  let usedModel = ''
   try {
-    text = (await run(true)).text
+    const first = await run(true)
+    text = first.text
+    usedModel = first.model
   } catch (e) {
     // If the model/endpoint rejects the schema options (400 not about the key), retry in plain mode
-    if (e instanceof GeminiError && e.status === 400) text = (await run(false)).text
+    if (e instanceof GeminiError && e.status === 400) {
+      const second = await run(false)
+      text = second.text
+      usedModel = second.model
+    }
     else throw e
   }
   try {
-    return parseReport(text)
+    return { ...parseReport(text), model: usedModel }
   } catch {
     throw new Error('Gemini answered in an unexpected format — tap Analyse again.')
   }
@@ -174,6 +267,7 @@ price targets or predictions presented as certain. Frame next steps as reviews, 
 your risk tolerance"). Be concrete with numbers from the facts. Respond with ONLY a JSON object, no markdown fences.`
 
 export interface MarketReport {
+  model?: string
   headline: string
   portfolio: { title: string; detail: string; tone: Tone }[]
   market: { topic: string; summary: string }[]
@@ -220,7 +314,7 @@ ${JSON.stringify(opts.facts)}
 
 Today is ${opts.facts.today}. ${MARKET_FORMAT}`
   const run = (search: boolean) => generate({ apiKey: opts.apiKey, model: opts.model, system: MARKET_SYSTEM, user, search })
-  let out: { text: string; grounding?: Grounding }
+  let out: { text: string; grounding?: Grounding; model: string }
   let searchUnavailable = false
   if (opts.useSearch === false) {
     out = await run(false)
@@ -236,7 +330,7 @@ Today is ${opts.facts.today}. ${MARKET_FORMAT}`
     }
   }
   try {
-    return { ...parseMarket(out.text), grounding: out.grounding, searchUnavailable }
+    return { ...parseMarket(out.text), grounding: out.grounding, searchUnavailable, model: out.model }
   } catch {
     throw new Error('Gemini answered in an unexpected format — tap Analyse again.')
   }

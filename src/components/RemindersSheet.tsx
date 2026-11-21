@@ -91,7 +91,7 @@ function ReminderRow({ r }: { r: Reminder }) {
           ? 'tomorrow'
           : friendlyDate(r.date)
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm dark:bg-slate-800/60">
+    <div className="flex items-center gap-3 rounded-2xl bg-white p-3 card dark:bg-slate-800/60">
       <button
         onClick={() => toggleReminderDone(r)}
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-xs ${

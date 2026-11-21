@@ -42,7 +42,7 @@ export default function Sheet({ title, onClose, children }: { title: ReactNode; 
     <div className="fixed inset-0 z-40 flex items-end justify-center">
       <div className="animate-fade-in absolute inset-0 bg-slate-950/50 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="animate-slide-up relative z-10 flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900"
+        className="animate-slide-up relative z-10 flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-slate-900 dark:ring-white/10"
         style={{
           transform: dragY ? `translateY(${dragY}px)` : undefined,
           transition: dragging.current ? 'none' : 'transform 0.25s cubic-bezier(0.32, 0.72, 0, 1)'

@@ -224,7 +224,7 @@ export default function MarketSheet({ onClose }: { onClose: () => void }) {
                   className="mt-2 h-14 w-full rounded-xl border-0 bg-transparent"
                 />
               )}
-              <p className="mt-2 text-[11px] text-slate-400">Generated {new Date(cached!.at).toLocaleString()}</p>
+              <p className="mt-2 text-[11px] text-slate-400">Generated {new Date(cached!.at).toLocaleString()}{report.model ? ` · ${report.model}` : ''}</p>
             </div>
           )}
 

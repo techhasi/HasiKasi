@@ -169,7 +169,7 @@ export default function AiSheet({ periodIdx, onClose }: { periodIdx: number; onC
                   </ul>
                 </div>
               )}
-              <p className="mt-2 text-[11px] text-slate-400">Generated {new Date(report.at).toLocaleString()}</p>
+              <p className="mt-2 text-[11px] text-slate-400">Generated {new Date(report.at).toLocaleString()}{report.report.model ? ` · ${report.report.model}` : ''}</p>
             </div>
           )}
 

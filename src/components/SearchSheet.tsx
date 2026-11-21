@@ -116,7 +116,7 @@ export default function SearchSheet({ onClose }: { onClose: () => void }) {
         {results.length} result{results.length === 1 ? '' : 's'}
       </p>
 
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
+      <div className="overflow-hidden rounded-2xl bg-white card dark:bg-slate-800/60">
         {results.length === 0 && (
           <p className="p-6 text-center text-sm text-slate-400">Nothing matches.</p>
         )}

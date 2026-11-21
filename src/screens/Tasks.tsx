@@ -81,7 +81,7 @@ export default function Tasks({ addOpen, onAddClose }: { addOpen: boolean; onAdd
           <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">{openCount} open</p>
         </div>
-        <button onClick={() => setManageLists(true)} className="rounded-xl bg-white px-3 py-2 text-sm font-semibold shadow-sm dark:bg-slate-800/60">
+        <button onClick={() => setManageLists(true)} className="rounded-xl bg-white px-3 py-2 text-sm font-semibold card dark:bg-slate-800/60">
           🗂 Lists
         </button>
       </div>

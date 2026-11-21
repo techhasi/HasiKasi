@@ -89,7 +89,7 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-lg min-h-dvh pb-28">
-      <main className="pt-safe">
+      <main key={tab} className="pt-safe animate-tab">
         {tab === 'home' && <Dashboard onOpenSettings={() => setTab('settings')} />}
         {tab === 'stats' && <Stats />}
         {tab === 'tasks' && <Tasks addOpen={taskAddOpen} onAddClose={() => setTaskAddOpen(false)} />}
@@ -99,7 +99,7 @@ export default function App() {
 
       {/* Bottom nav */}
       <nav className="fixed bottom-0 left-1/2 z-30 w-full max-w-lg -translate-x-1/2 pb-safe">
-        <div className="relative mx-4 mb-1 flex items-center justify-between rounded-3xl border border-slate-200/60 bg-white/80 px-2 py-2 shadow-2xl shadow-slate-900/10 backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/80">
+        <div className="relative mx-4 mb-1 flex items-center justify-between rounded-3xl border border-slate-200/60 bg-white/75 px-2 py-2 shadow-2xl shadow-slate-900/10 backdrop-blur-2xl dark:border-white/10 dark:bg-slate-900/80">
           {TABS.slice(0, 2).map(t => (
             <TabButton key={t.id} tab={t} active={tab === t.id} onClick={() => setTab(t.id)} />
           ))}
@@ -127,7 +127,7 @@ function TabButton({ tab, active, onClick }: { tab: { label: string; icon: strin
     <button
       onClick={onClick}
       className={`flex flex-1 flex-col items-center gap-0.5 rounded-2xl py-1.5 transition-colors ${
-        active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'
+        active ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500'
       }`}
     >
       <span className={`text-xl transition-transform ${active ? 'scale-110' : 'grayscale opacity-70'}`}>{tab.icon}</span>

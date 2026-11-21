@@ -144,14 +144,14 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
         <button
           onClick={() => setSearchOpen(true)}
           aria-label="Search transactions"
-          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-slate-800/60"
+          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl card dark:bg-slate-800/60"
         >
           🔍
         </button>
         <button
           onClick={() => setRemindersOpen(true)}
           aria-label="Reminders"
-          className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-slate-800/60"
+          className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl card dark:bg-slate-800/60"
         >
           🔔
           {dueReminderCount > 0 && (
@@ -163,7 +163,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
         <button
           onClick={() => setSmsOpen(true)}
           aria-label="Import from SMS"
-          className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-slate-800/60"
+          className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl card dark:bg-slate-800/60"
         >
           📥
           {pendingCount > 0 && (
@@ -175,7 +175,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
         <button
           onClick={onOpenSettings}
           aria-label="Settings"
-          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-slate-800/60"
+          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl card dark:bg-slate-800/60"
         >
           ⚙️
         </button>
@@ -183,7 +183,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
       </header>
 
       {/* Summary card */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 p-5 text-white shadow-xl shadow-indigo-500/30">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 p-5 text-white shadow-xl shadow-indigo-500/25 ring-1 ring-white/15">
         <div className="absolute -right-8 -top-10 h-40 w-40 rounded-full bg-white/10" />
         <div className="absolute -right-16 top-8 h-40 w-40 rounded-full bg-white/5" />
 
@@ -327,7 +327,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Card spending · this period
           </h2>
-          <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
+          <div className="overflow-hidden rounded-2xl bg-white card dark:bg-slate-800/60">
             {cardSpend.map(c => (
               <div key={c.account.id} className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0 dark:border-slate-700/50">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/10 text-base">💳</span>
@@ -353,7 +353,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Budgets
           </h2>
-          <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
+          <div className="overflow-hidden rounded-2xl bg-white card dark:bg-slate-800/60">
             {budgets.map(({ cat, spent, budget }) => {
               const usage = spent / budget
               const over = usage > 1
@@ -413,7 +413,7 @@ export default function Dashboard({ onOpenSettings }: { onOpenSettings: () => vo
                 </p>
               )}
             </div>
-            <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-800/60">
+            <div className="overflow-hidden rounded-2xl bg-white card dark:bg-slate-800/60">
               {g.items.map(t => {
                 const isTransfer = t.type === 'transfer'
                 const isAdjustment = !!t.adjustment

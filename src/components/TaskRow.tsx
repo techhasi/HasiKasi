@@ -9,7 +9,7 @@ export default function TaskRow({ task, onToggle, onOpen }: { task: Task; onTogg
   const overdue = isOverdue(task)
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm dark:bg-slate-800/60">
+    <div className="flex items-center gap-3 rounded-2xl bg-white p-3 card dark:bg-slate-800/60">
       {/* Checkbox */}
       <button
         onClick={onToggle}

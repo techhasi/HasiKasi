@@ -109,7 +109,7 @@ export default function TaskCalendar() {
       </div>
 
       {/* Grid */}
-      <div className="rounded-2xl bg-white p-2 shadow-sm dark:bg-slate-800/60">
+      <div className="rounded-2xl bg-white p-2 card dark:bg-slate-800/60">
         <div className="mb-1 grid grid-cols-7">
           {WEEKDAYS.map((d, i) => (
             <div key={i} className="py-1 text-center text-[10px] font-semibold text-slate-400">{d}</div>
@@ -147,7 +147,7 @@ export default function TaskCalendar() {
       </div>
 
       {/* Google Calendar connect */}
-      <div className="mt-3 flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 shadow-sm dark:bg-slate-800/60">
+      <div className="mt-3 flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 card dark:bg-slate-800/60">
         <span className="text-xs text-slate-500 dark:text-slate-400">
           📅 {isGcalConnected() ? 'Google Calendar connected' : gcalMsg || 'Overlay your Google Calendar'}
         </span>

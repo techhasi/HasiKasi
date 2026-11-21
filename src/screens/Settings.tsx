@@ -5,7 +5,7 @@ import { exportBackup, getSnapshotInfo, readBackupFile, importBackupData, summar
 import { autoBackup, normalizeRepo } from '../lib/cloudBackup'
 import { lockSupported, enrollLock, verifyLock } from '../lib/appLock'
 import { ENV_GCAL_CLIENT_ID, ENV_MARKET_KEY } from '../lib/env'
-import { DEFAULT_GEMINI_MODEL } from '../lib/ai'
+import { DEFAULT_GEMINI_MODEL, FREE_MODELS, testGemini } from '../lib/ai'
 import GuideSheet from '../components/GuideSheet'
 import CategoriesSheet from '../components/CategoriesSheet'
 import CloudRestoreSheet from '../components/CloudRestoreSheet'
@@ -17,6 +17,7 @@ export default function SettingsScreen() {
   const [message, setMessage] = useState('')
   const [guideOpen, setGuideOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
+  const [aiTest, setAiTest] = useState<{ busy?: boolean; ok?: boolean; text?: string }>({})
   const [cloudRestoreOpen, setCloudRestoreOpen] = useState(false)
 
   const snapshot = useLiveQuery(() => getSnapshotInfo(), [], undefined)
@@ -157,11 +158,34 @@ export default function SettingsScreen() {
             className="mb-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
           <SyncedInput
-            placeholder={`Model (default ${DEFAULT_GEMINI_MODEL})`}
+            placeholder={`Model — leave empty for auto (${DEFAULT_GEMINI_MODEL}…)`}
             value={settings.geminiModel ?? ''}
             onCommit={v => update({ geminiModel: v.trim() || undefined })}
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60"
           />
+          <p className="mt-1.5 text-xs text-slate-400">
+            Auto tries {FREE_MODELS.slice(0, 3).join(', ')}… until one works on your free quota.
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              disabled={!settings.geminiApiKey || aiTest.busy}
+              onClick={async () => {
+                setAiTest({ busy: true })
+                try {
+                  const m = await testGemini(settings.geminiApiKey!, settings.geminiModel)
+                  setAiTest({ ok: true, text: `Working — answered by ${m}` })
+                } catch (e) {
+                  setAiTest({ ok: false, text: e instanceof Error ? e.message : 'Failed' })
+                }
+              }}
+              className="shrink-0 rounded-xl bg-indigo-500 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              {aiTest.busy ? 'Testing…' : 'Test connection'}
+            </button>
+            {aiTest.text && (
+              <p className={`min-w-0 text-xs leading-snug ${aiTest.ok ? 'text-emerald-500' : 'text-rose-500'}`}>{aiTest.text}</p>
+            )}
+          </div>
         </div>
       </Section>
 
@@ -397,7 +421,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div className="mb-5">
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h2>
-      <div className="overflow-hidden rounded-3xl bg-white shadow-sm dark:bg-slate-800/60">{children}</div>
+      <div className="overflow-hidden rounded-3xl bg-white card dark:bg-slate-800/60">{children}</div>
     </div>
   )
 }
